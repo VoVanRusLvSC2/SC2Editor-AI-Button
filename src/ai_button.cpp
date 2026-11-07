@@ -8,10 +8,14 @@
 namespace {
 constexpr wchar_t kLegacyProperty1[] = L"SC2AIButton.context.v1";
 constexpr wchar_t kLegacyProperty2[] = L"SC2AIButton.context.v2";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v3";
+constexpr wchar_t kLegacyProperty3[] = L"SC2AIButton.context.v3";
+constexpr wchar_t kLegacyProperty4[] = L"SC2AIButton.context.v4";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v5";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v3";
+constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
+constexpr wchar_t kLegacyWindowClass4[] = L"SC2AIButton.Window.v4";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v5";
 constexpr UINT kCommand = 60000;
 HMODULE moduleHandle = nullptr;
 HHOOK threadHook = nullptr;
@@ -47,8 +51,22 @@ HBITMAP CreateAIIcon(int width,int height) {
     DrawTextW(dc,L"AI",2,&base,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
     GdiFlush();
     auto pixels=static_cast<DWORD*>(bits);
+    std::vector<unsigned char> original(static_cast<size_t>(width)*height);
+    int left=width,top=height,right=-1,bottom=-1;
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        auto value=static_cast<unsigned char>(pixels[y*width+x]&255); original[y*width+x]=value;
+        if (value>40) { if(x<left)left=x; if(x>right)right=x; if(y<top)top=y; if(y>bottom)bottom=y; }
+    }
     std::vector<unsigned char> mask(static_cast<size_t>(width)*height);
-    for (int i=0;i<width*height;++i) mask[i]=static_cast<unsigned char>(pixels[i]&255);
+    if (right>=left && bottom>=top) {
+        int sourceW=right-left+1,sourceH=bottom-top+1;
+        int targetH=height-6,targetW=sourceW*targetH*85/(sourceH*100);
+        if(targetW>width-4)targetW=width-4;
+        if(targetW<1)targetW=1;
+        int x0=(width-targetW)/2,y0=(height-targetH)/2;
+        for(int y=0;y<targetH;++y)for(int x=0;x<targetW;++x)
+            mask[(y0+y)*width+x0+x]=original[(top+y*sourceH/targetH)*width+left+x*sourceW/targetW];
+    }
     auto ink=[&](int x,int y){return x>=0 && y>=0 && x<width && y<height && mask[y*width+x]>40;};
     for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
         bool inside=ink(x,y); bool edge=false;
@@ -68,7 +86,72 @@ HBITMAP CreateAIIcon(int width,int height) {
     return bitmap;
 }
 
-int AddAIIcon(HWND toolbar,Context* ctx) {
+// Build the lettering from the editor's own Text-module icon. Its pixel colors,
+// bevel and outline then follow the installed editor's artwork and theme.
+HBITMAP CreateNativeAIIcon(HWND toolbar, HIMAGELIST images, int insertion, int width, int height) {
+    if (insertion<9 || width<16 || height<16 || width>256 || height>256) return nullptr;
+    for (int i=insertion-9;i<insertion;++i) {
+        TBBUTTON b{};
+        if (!SendMessageW(toolbar,TB_GETBUTTON,i,reinterpret_cast<LPARAM>(&b)) || (b.fsStyle&BTNS_SEP)) return nullptr;
+    }
+    TBBUTTON text{};
+    if (!SendMessageW(toolbar,TB_GETBUTTON,insertion-6,reinterpret_cast<LPARAM>(&text)) ||
+        text.iBitmap<0 || text.iBitmap>=ImageList_GetImageCount(images)) return nullptr;
+    BITMAPINFO info{}; info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=width; info.bmiHeader.biHeight=-height;
+    info.bmiHeader.biPlanes=1; info.bmiHeader.biBitCount=32; info.bmiHeader.biCompression=BI_RGB;
+    HDC dc=CreateCompatibleDC(nullptr); if(!dc)return nullptr;
+    void* bits=nullptr; HBITMAP bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bits,nullptr,0);
+    if(!bitmap || !bits){if(bitmap)DeleteObject(bitmap);DeleteDC(dc);return nullptr;}
+    auto old=SelectObject(dc,bitmap); auto pixels=static_cast<DWORD*>(bits);
+    constexpr DWORD background=0x00f0f0f0;
+    for(int i=0;i<width*height;++i)pixels[i]=background;
+    bool drawn=ImageList_Draw(images,text.iBitmap,dc,0,0,ILD_TRANSPARENT)!=FALSE;
+    GdiFlush();
+    std::vector<DWORD> source(pixels,pixels+width*height);
+    int left=width,right=-1,top=height,bottom=-1;
+    for(int y=0;y<height;++y)for(int x=0;x<width;++x)if((source[y*width+x]&0xffffff)!=background){
+        if(x<left)left=x;if(x>right)right=x;if(y<top)top=y;if(y>bottom)bottom=y;
+    }
+    if(!drawn || right<left || bottom<top || right-left+1>=width || bottom-top+1>=height){
+        SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);return nullptr;
+    }
+    for(int i=0;i<width*height;++i)pixels[i]=0;
+    int sourceW=right-left+1,sourceH=bottom-top+1;
+    int targetH=sourceH; if(targetH>height-4)targetH=height-4;
+    int iWidth=width/5; if(iWidth<4)iWidth=4;
+    int aWidth=sourceW*targetH/sourceH;
+    if(aWidth>width-iWidth-5)aWidth=width-iWidth-5;
+    if(aWidth<3){SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);return nullptr;}
+    int x0=(width-aWidth-iWidth-1)/2,y0=(height-targetH)/2;
+    for(int y=0;y<targetH;++y){
+        int sy=top+y*sourceH/targetH;
+        DWORD darkest=0,brightest=0; int minLight=1000,maxBlue=-1000;
+        for(int x=left;x<=right;++x){
+            DWORD p=source[sy*width+x]&0xffffff;if(p==background)continue;
+            int r=(p>>16)&255,g=(p>>8)&255,b=p&255,light=r+g+b;
+            if(light<minLight){minLight=light;darkest=p;}
+            int blue=g+b-r;if(blue>maxBlue){maxBlue=blue;brightest=p;}
+        }
+        if(minLight==1000){darkest=0x001122;brightest=0x5090b0;}
+        for(int x=0;x<aWidth;++x){
+            DWORD p=source[sy*width+left+x*sourceW/aWidth]&0xffffff;
+            if(p!=background)pixels[(y0+y)*width+x0+x]=0xff000000|p;
+        }
+        // Narrow serif I uses colors sampled from the corresponding row of A.
+        for(int x=0;x<iWidth;++x){
+            bool bar=y<2 || y>=targetH-2;
+            bool stem=x>=iWidth/3 && x<iWidth-iWidth/3;
+            if(!bar && !stem)continue;
+            bool edge=(bar && (y==0 || y==targetH-1 || x==0 || x==iWidth-1)) ||
+                (!bar && (x==iWidth/3 || x==iWidth-iWidth/3-1));
+            pixels[(y0+y)*width+x0+aWidth+1+x]=0xff000000|(edge?darkest:brightest);
+        }
+    }
+    SelectObject(dc,old);DeleteDC(dc);return bitmap;
+}
+
+int AddAIIcon(HWND toolbar,Context* ctx,int insertion) {
     auto images=reinterpret_cast<HIMAGELIST>(SendMessageW(toolbar,TB_GETIMAGELIST,0,0));
     int width=0,height=0;
     if (!images) {
@@ -79,7 +162,8 @@ int AddAIIcon(HWND toolbar,Context* ctx) {
     }
     ctx->images=images;
     if (!ImageList_GetIconSize(images,&width,&height)) return -1;
-    HBITMAP icon=CreateAIIcon(width,height);
+    HBITMAP icon=CreateNativeAIIcon(toolbar,images,insertion,width,height);
+    if (!icon) icon=CreateAIIcon(width,height);
     if (!icon) return -1;
     int index=ImageList_Add(images,icon,nullptr); DeleteObject(icon); return index;
 }
@@ -126,12 +210,13 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 
 void LayoutWindow(Context* ctx) {
     if (!IsWindow(ctx->window) || !IsWindow(ctx->owner) || !IsWindow(ctx->toolbar)) return;
+    if (IsIconic(ctx->owner) || !IsWindowVisible(ctx->owner)) { ShowWindow(ctx->window,SW_HIDE); return; }
     RECT area{},bar{};
     if (!GetClientRect(ctx->owner,&area) || !GetWindowRect(ctx->toolbar,&bar)) return;
-    MapWindowPoints(nullptr,ctx->owner,reinterpret_cast<POINT*>(&bar),2);
-    int top=bar.bottom<0?0:bar.bottom;
+    MapWindowPoints(ctx->owner,nullptr,reinterpret_cast<POINT*>(&area),2);
+    int top=bar.bottom<area.top?area.top:bar.bottom;
     if (top>area.bottom) top=area.bottom;
-    SetWindowPos(ctx->window,HWND_TOP,0,top,area.right,area.bottom-top,SWP_NOACTIVATE|SWP_SHOWWINDOW);
+    SetWindowPos(ctx->window,HWND_TOP,area.left,top,area.right-area.left,area.bottom-top,SWP_NOACTIVATE|SWP_SHOWWINDOW);
 }
 
 bool OpenWindow(Context* ctx) {
@@ -144,7 +229,9 @@ bool OpenWindow(Context* ctx) {
     wc.hCursor=LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if (!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS) return false;
-    HWND window=CreateWindowExW(0, kWindowClass, L"AI", WS_CHILD|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,
+    // A sibling child can be covered by the Editor's independently rendered
+    // viewport. An owned popup remains above it while leaving the toolbar free.
+    HWND window=CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"AI", WS_POPUP|WS_CLIPCHILDREN,
         0,0,0,0,ctx->owner,nullptr,moduleHandle,ctx);
     if (!window) return false;
     LayoutWindow(ctx); UpdateWindow(window); return true;
@@ -155,7 +242,7 @@ LRESULT CALLBACK OwnerProc(HWND owner, UINT message, WPARAM w, LPARAM l, UINT_PT
     if (message==WM_COMMAND && LOWORD(w)==ctx->command && reinterpret_cast<HWND>(l)==ctx->toolbar) {
         OpenWindow(ctx); return 0;
     }
-    if (message==WM_SIZE || message==WM_DPICHANGED) {
+    if (message==WM_SIZE || message==WM_MOVE || message==WM_WINDOWPOSCHANGED || message==WM_DPICHANGED || message==WM_SHOWWINDOW) {
         HWND toolbar=ctx->toolbar;
         auto result=DefSubclassProc(owner,message,w,l);
         if (IsWindow(toolbar) && GetPropW(toolbar,kProperty)==ctx) LayoutWindow(ctx);
@@ -180,10 +267,16 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
+    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
+    return TRUE;
+}
+BOOL CALLBACK CloseLegacyPanel(HWND window, LPARAM raw) {
+    auto state=reinterpret_cast<LegacyClose*>(raw);
+    wchar_t cls[128]{}; GetClassNameW(window,cls,128);
+    if (!lstrcmpW(cls,kLegacyWindowClass3)) { state->wasOpen=true; DestroyWindow(window); }
     return TRUE;
 }
 }
@@ -197,7 +290,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
         command==0 || command>0xffff || GetPropW(toolbar,kProperty)) return FALSE;
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0);
+    int legacy=GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0)));
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) return FALSE;
     auto ctx=new(std::nothrow) Context{toolbar,owner,nullptr,command,legacy,false,nullptr,{}};
     if (!ctx) return FALSE;
@@ -210,7 +303,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
     if (!SetWindowSubclass(owner,OwnerProc,reinterpret_cast<UINT_PTR>(ctx),reinterpret_cast<DWORD_PTR>(ctx))) {
         RemovePropW(toolbar,kProperty); delete ctx; return FALSE;
     }
-    int imageIndex=AddAIIcon(toolbar,ctx);
+    int imageIndex=AddAIIcon(toolbar,ctx,index);
     bool inserted=false;
     if (imageIndex>=0 && legacy) {
         RECT previous{};
@@ -236,6 +329,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
     if (legacy) {
         LegacyClose previous{ctx,false};
         EnumThreadWindows(GetCurrentThreadId(),CloseLegacyWindow,reinterpret_cast<LPARAM>(&previous));
+        EnumChildWindows(owner,CloseLegacyPanel,reinterpret_cast<LPARAM>(&previous));
         if (previous.wasOpen) OpenWindow(ctx);
     }
     return TRUE;
@@ -286,7 +380,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     wchar_t barClass[64]{}; GetClassNameW(toolbar,barClass,64);
     int index=0;
     if (lstrcmpiW(barClass,TOOLBARCLASSNAMEW)) return TRUE;
-    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2)) {
+    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4)) {
         auto oldIndex=SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0);
         if (oldIndex>=0) SC2AI_Attach(toolbar,static_cast<int>(oldIndex),kCommand);
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
@@ -329,7 +423,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v3");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v5");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

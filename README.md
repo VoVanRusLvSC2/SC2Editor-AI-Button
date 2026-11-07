@@ -2,7 +2,8 @@
 
 An experimental Windows x64 extension for the original StarCraft II Editor.
 It adds a steel-blue **AI** icon the same size as the Editor's other toolbar
-buttons, before the SC2 button. The button opens an empty AI panel in the Editor
+buttons, before the SC2 button. Where the standard module toolbar is detected,
+the lettering uses the Editor's own Text icon artwork and colors. The button opens an empty AI panel in the Editor
 workspace below the main toolbar. Closing the panel allows it to be reopened.
 There is no chat or MCP integration yet.
 
@@ -19,8 +20,8 @@ version is **5.0.17.98310 x64**. An unrecognized version or toolbar layout fails
 without inserting a button. If several visible Editor processes are running,
 select one explicitly in a console with `SC2AILoader.exe --pid <process-id>`.
 
-This is an experimental extension. The AI panel is a child of the current Editor
-window, not a native dockable Editor module. If the Editor toolbar is too narrow, its
+This is an experimental extension. The AI panel is an owned window positioned over
+the workspace, not a native dockable Editor module. If the Editor toolbar is too narrow, its
 usual overflow behavior may hide buttons. Make a backup of important work and
 test with a disposable map before using it for real editing.
 

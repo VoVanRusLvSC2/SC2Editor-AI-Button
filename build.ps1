@@ -27,6 +27,10 @@ try {
     if ($LASTEXITCODE) { throw 'Module-switch test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\legacy_upgrade_test.cpp') /Fe:legacy_upgrade_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Legacy upgrade test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\diagnose_editor.cpp') /Fe:diagnose_editor.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Editor diagnostics build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\multi_upgrade_test.cpp') /Fe:multi_upgrade_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Multi-version upgrade test build failed.' }
     & .\toolbar_test.exe
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
 } finally { Pop-Location }

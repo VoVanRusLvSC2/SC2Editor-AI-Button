@@ -8,20 +8,22 @@ static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM owner) {
     if (GetWindow(h,GW_OWNER)!=reinterpret_cast<HWND>(owner)) return TRUE;
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2")) oldWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2") || !lstrcmpW(cls,L"SC2AIButton.Window.v4")) oldWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v5")) newWindow=h;
     return TRUE;
 }
 static BOOL CALLBACK FindChild(HWND h,LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v3")) newWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v3")) oldWindow=h;
     return TRUE;
 }
 int wmain(int argc,wchar_t**argv) {
     if(argc!=2) return 1;
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES}; if(!InitCommonControlsEx(&common)) return 2;
-    HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,0,0,500,100,nullptr,nullptr,nullptr,nullptr);
+    HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,500,180,nullptr,nullptr,nullptr,nullptr);
     HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|TBSTYLE_FLAT,0,0,500,30,owner,nullptr,nullptr,nullptr);
     if(!owner||!bar)return 3;
+    ShowWindow(owner,SW_SHOWNOACTIVATE);
     SendMessageW(bar,TB_BUTTONSTRUCTSIZE,sizeof(TBBUTTON),0);
     HIMAGELIST images=ImageList_Create(24,24,ILC_COLOR32|ILC_MASK,0,1); if(!images)return 4;
     SendMessageW(bar,TB_SETIMAGELIST,0,reinterpret_cast<LPARAM>(images));
@@ -38,15 +40,16 @@ int wmain(int argc,wchar_t**argv) {
     TBBUTTON before{}; if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&before)))return 15;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));
     EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));
+    EnumChildWindows(owner,FindChild,0);
     if(!IsWindow(oldWindow))return 8;
     HWND previous=oldWindow;
     if(!attach(bar,1,500))return 9;
     oldWindow=nullptr;newWindow=nullptr;EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));EnumChildWindows(owner,FindChild,0);
-    if(IsWindow(previous)||!IsWindow(newWindow)||GetParent(newWindow)!=owner||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
+    if(IsWindow(previous)||!IsWindow(newWindow)||GetWindow(newWindow,GW_OWNER)!=owner||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
     TBBUTTON button{}; if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap<0)return 11;
     if(!detach(bar,500)||IsWindow(newWindow)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 12;
     if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap!=before.iBitmap)return 13;
     if(!oldDetach(bar,500)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=2)return 14;
     FreeLibrary(current);FreeLibrary(old);DestroyWindow(owner);ImageList_Destroy(images);
-    std::puts("PASS: legacy button upgraded in place; window replaced with child panel; legacy restored on detach");return 0;
+    std::puts("PASS: legacy button upgraded in place; window replaced with owned panel; legacy restored on detach");return 0;
 }
