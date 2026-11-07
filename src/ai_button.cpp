@@ -396,7 +396,7 @@ void LayoutControls(Context* ctx,HWND window) {
     int attachmentSpace=ctx->attachments.empty()?0:64;
     MoveWindow(ctx->description,mainX,top+60,mainW,inputY-top-72-attachmentSpace,TRUE);
     bool narrow=side<250;int allX=sidebarX+(narrow?40:48),allW=narrow?32:38,editorX=allX+allW+2,editorW=narrow?72:86,deleteX=editorX+editorW+2;
-    MoveWindow(ctx->history,sidebarX,top,narrow?38:44,24,TRUE);
+    MoveWindow(ctx->history,sidebarX-10,top,narrow?48:54,24,TRUE);
     MoveWindow(ctx->showAll,allX,top-4,allW,26,TRUE);
     MoveWindow(ctx->showEditor,editorX,top-4,editorW,26,TRUE);
     MoveWindow(ctx->deleteChat,deleteX,top-4,narrow?38:50,26,TRUE);
