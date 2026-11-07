@@ -1,5 +1,8 @@
 // Only queues MCP refresh on this panel's own idle app-server. No process kills.
 // Contract: https://developers.openai.com/codex/app-server/ (config/mcpServer/reload).
+// Для каждого отпечатка запрашиваем обновление MCP только один раз.
+// Если файлы неизвестны или не изменились, повторного запроса не делаем.
+// После ошибки отпечаток не сохраняется, поэтому следующая попытка возможна.
 export function createMcpFreshener(request, fingerprint) {
   let loaded;
   return async function refreshIfChanged() {

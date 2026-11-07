@@ -9,18 +9,26 @@ import {createMcpFreshener} from './mcp_refresh.mjs';
 
 // A private stdio channel connects this process only to the editor extension.
 // Data fields are base64-encoded UTF-8; stdout never contains debug output.
+// Протокол с C++: одна строка содержит имя события и поля через табуляцию. Поля кодируются UTF-8 +
+// Base64, чтобы переносы не ломали обмен. Base64 не является шифрованием.
 const b64 = s => Buffer.from(String(s ?? ''), 'utf8').toString('base64');
 const un64 = s => Buffer.from(s || '', 'base64').toString('utf8');
 const emit = (kind, ...values) => process.stdout.write([kind, ...values.map(b64)].join('\t') + '\n');
 const russian=process.argv[4]==='ru';
 const tr=(ru,en)=>russian?ru:en;
 const cwd = process.argv[2] && existsSync(process.argv[2]) ? process.argv[2] : process.cwd();
+// Состояние текущего окна: провайдер, модель, чат и текущий запрос. generation помогает
+// отбрасывать устаревшие асинхронные результаты.
 let provider = 'codex', model = '', selected = '', running = null, generation = 0;
 let mapContext={path:'',dirty:false,caption:'',windowId:'',processId:'',inferred:false},mcpStatus=tr('SC2 MCP: проверка...','SC2 MCP: checking...');
+// Показываем статус MCP и найденное имя карты. Это не подтверждение привязки MCP к её данным в
+// памяти.
 function showContext(){
   const name=mapContext.path?path.basename(mapContext.path):'';
   emit('mcp',mcpStatus+' · '+(name?`${tr('карта','map')}: ${name}${mapContext.inferred?tr(' (по истории редактора)',' (from editor history)'):''}${mapContext.dirty?tr(' (есть несохранённые изменения)',' (unsaved changes)'):''}`:tr('карта не определена','map not identified')));
 }
+// Добавляем модели контекст окна и инструкции работы с картой. Текст сам по себе не даёт доступ к
+// карте и не заменяет проверку MCP.
 function mapPrompt(text){
   const map=mapContext.path
     ? `Document in this SC2 Editor window: ${JSON.stringify(mapContext.path)}. ${mapContext.inferred?'The path was inferred from an abbreviated title and Editor history; verify the window identity through MCP. ':''}${mapContext.dirty?'The Editor contains unsaved changes; the saved file may differ.':'This identifies the saved file; inspect the Editor for unsaved changes.'}`
@@ -31,13 +39,19 @@ const claudeDirs=new Map();
 // Membership belongs to this extension and must not modify Codex desktop state
 // or change the working directory of chats operating on the current map.
 const editorGroup='sc2-ai:in-editor';
+// Маркеры запоминают ID чатов, созданных в редакторе. Они не содержат историю и не перемещают
+// файлы карты.
 const stateDir=process.env.SC2_AI_STATE_DIR||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'.local','share'),'SC2Editor-AI-Button','in-editor');
 const marker=(kind,id)=>path.join(stateDir,createHash('sha256').update(kind+'\0'+id).digest('hex'));
 function isEditorChat(kind,id){return !!id&&existsSync(marker(kind,id));}
 function markEditorChat(kind,id){mkdirSync(stateDir,{recursive:true});try{writeFileSync(marker(kind,id),'',{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;}}
 function forgetEditorChat(kind,id){try{unlinkSync(marker(kind,id));}catch(e){if(e.code!=='ENOENT')throw e;}}
+// Храним клиенты провайдеров и ожидающие подтверждения. При закрытии bridge незавершённые
+// подтверждения отклоняются.
 let codex, claude, aborter, nextApproval = 1, questionRequest = null, loginId = null; const approvals = new Map();
 let sectionPromise=null;const sectionMoves=new Set();
+// Проверяем явно заданный путь, стандартную установку и PATH, не привязываясь к имени пользователя
+// автора.
 function findCodex(){
   if(process.env.SC2_AI_CODEX_PATH && existsSync(process.env.SC2_AI_CODEX_PATH))return process.env.SC2_AI_CODEX_PATH;
   const root=path.join(process.env.LOCALAPPDATA || '', 'OpenAI','Codex','bin');
@@ -46,6 +60,8 @@ function findCodex(){
   try { const values=execFileSync('where.exe',['codex.exe'],{encoding:'utf8',windowsHide:true}).trim().split(/\r?\n/); return values.find(existsSync); }catch{return null;}
 }
 const codexPath=findCodex();
+// Клиент локального Codex app-server: JSON-запросы и ответы передаются строками через stdin/stdout
+// и сопоставляются по ID.
 class AppServer{
   constructor(exe){this.proc=spawn(exe,[...(process.env.SC2_AI_CODEX_EXTRA_ARGS ? JSON.parse(process.env.SC2_AI_CODEX_EXTRA_ARGS) : []),'app-server','--listen','stdio://'],{stdio:['pipe','pipe','pipe'],windowsHide:true});this.id=1;this.pending=new Map();this.ready=false;
     createInterface({input:this.proc.stdout}).on('line',line=>this.onLine(line));
@@ -57,6 +73,8 @@ class AppServer{
   failed(message){if(this.closed)return;this.ready=false;sectionPromise=null;for(const p of this.pending.values())p.reject(Error(message));this.pending.clear();if(provider==='codex')emit('error',message);}
   send(msg){if(!this.proc.stdin.destroyed)this.proc.stdin.write(JSON.stringify(msg)+'\n');}
   request(method,params={}){return new Promise((resolve,reject)=>{const id=this.id++;this.pending.set(id,{resolve,reject});this.send({id,method,params});setTimeout(()=>{if(this.pending.delete(id))reject(Error(tr('Нет ответа от Codex: ','No response from Codex: ')+method));},30000).unref();});}
+// Ответ с ID завершает ожидающий запрос. Уведомления приносят части ответа, события инструментов и
+// завершение хода.
   onLine(line){let m;try{m=JSON.parse(line)}catch{return;}
     if(m.id!==undefined && !m.method){const p=this.pending.get(m.id);if(!p)return;this.pending.delete(m.id);m.error?p.reject(Error(m.error.message || tr('Ошибка Codex','Codex error'))):p.resolve(m.result);return;}
     if(m.id!==undefined && m.method){this.serverRequest(m);return;}
@@ -76,6 +94,8 @@ class AppServer{
     if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);if(turn.error?.message)emit('error',turn.error.message);listCodex(generation).catch(e=>emit('error',e.message));}
     if(m.method==='error' && p.error?.message)emit('error',p.error.message);
   }
+// Передаём поддерживаемые запросы подтверждения и ввода в окно. Неизвестные интерактивные запросы
+// явно отклоняем.
   serverRequest(m){
     const supported=['item/commandExecution/requestApproval','item/fileChange/requestApproval'];
     if(supported.includes(m.method)){
@@ -102,6 +122,8 @@ class AppServer{
   async start(){await this.request('initialize',{clientInfo:{name:'sc2_editor_ai',title:'SC2 Editor AI',version:'0.8.0'},capabilities:{}});this.send({method:'initialized',params:{}});this.ready=true;}
   close(){this.closed=true;try{this.proc.stdin.end();this.proc.kill()}catch{}}
 }
+// Находим или создаём раздел IN_EDITOR в Codex. Это группировка чатов, а не перенос карты в другую
+// папку.
 async function ensureEditorSection(){
   if(!sectionPromise){
     const server=codex;
@@ -113,6 +135,8 @@ async function ensureEditorSection(){
   }
   return sectionPromise;
 }
+// Синхронизируем раздел отдельно от отправки сообщения; ошибка синхронизации выводится в
+// интерфейсе.
 function syncEditorSection(id){
   if(!id||sectionMoves.has(id))return;sectionMoves.add(id);
   const server=codex;
@@ -127,6 +151,8 @@ function askNext(){
   const choices=(q.options||[]).map(o=>`• ${o.label}: ${o.description}`).join('\n');
   emit('question',q.question+(choices?'\n'+choices:''));
 }
+// Получаем состояние аккаунта, модели и статус sc2editor. Сам статус не доказывает доступ к нужной
+// открытой карте.
 async function codexConnect(gen){
   if(!codexPath)throw Error(tr('Codex не найден. Установите приложение Codex или задайте SC2_AI_CODEX_PATH.','Codex not found. Install Codex or set SC2_AI_CODEX_PATH.'));
   if(!codex || !codex.ready){codex?.close();codex=new AppServer(codexPath);await codex.start();}
@@ -137,6 +163,7 @@ async function codexConnect(gen){
   const server=(mcp.data||[]).find(x=>x.name==='sc2editor');mcpStatus=server?(server.toolsError?tr('SC2 MCP: ошибка подключения','SC2 MCP: connection error'):(Object.keys(server.tools||{}).length?tr('SC2 MCP подключён','SC2 MCP connected'):tr('SC2 MCP настроен','SC2 MCP configured'))):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();
   await listCodex(gen);if(gen===generation && provider==='codex')emit('ready','1');
 }
+// Получаем локальные чаты app-server и сопоставляем их с проектами и цветами приложения Codex.
 async function listCodex(gen=generation){
   // The desktop app stores legacy project names and assignments separately from
   // app-server threads. Read them only for display; never modify desktop state.
@@ -156,6 +183,8 @@ async function listCodex(gen=generation){
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
+// Служебный контекст отправляется модели, но в истории окна показываем исходный текст
+// пользователя.
 function unwrapUserMessage(raw){const marker='[Сообщение пользователя]\n';return raw.startsWith('[Контекст SC2 Editor]\n')&&raw.includes(marker)?raw.slice(raw.indexOf(marker)+marker.length):raw;}
 function userMessage(item){const content=item.content||[];const text=unwrapUserMessage(content.map(c=>c.text||'').join(''));const images=content.filter(c=>c.type==='localImage'||c.type==='image').length;return text+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':'');}
 function itemText(item){if(item.type==='userMessage')return tr('Вы: ','You: ')+userMessage(item);
@@ -163,6 +192,8 @@ function itemText(item){if(item.type==='userMessage')return tr('Вы: ','You: ')
   if(item.type==='mcpToolCall')return `[MCP: ${item.server} / ${item.tool} — ${statusText(item.status)}]`;
   if(item.type==='commandExecution'){const command=(item.command||'').replace(/\s+/g,' ').trim();const short=command.length>180?command.slice(0,177)+'…':command;return `[${tr('Команда','Command')} — ${statusText(item.status)}${short?': '+short:''}]`;}
   if(item.type==='fileChange')return `[${tr('Изменения файлов','File changes')} — ${statusText(item.status)}]`;return '';}
+// Загружаем последние ходы чата; ограничение текста для показа не означает удаление остальных
+// данных у провайдера.
 async function openCodex(id,gen){
   const result=await codex.request('thread/turns/list',{threadId:id,limit:100,itemsView:'full',sortDirection:'desc'});
   if(gen!==generation)return;
@@ -170,6 +201,8 @@ async function openCodex(id,gen){
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);
   emit('history',history);if(result.nextCursor)emit('event',tr('Показаны последние 100 сообщений диалога.','Showing the last 100 messages.'));
 }
+// Перед отправкой ещё раз проверяем путь, размер и сигнатуру PNG, дополняя проверки интерфейса
+// C++.
 function readAttachedImage(file){
   if(!file)return null;
   if(!path.isAbsolute(file))throw Error(tr('Некорректный путь изображения.','Invalid image path.'));
@@ -184,6 +217,8 @@ function loadAttachedImages(paths){
   return images;
 }
 function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n['+tr('Изображение','Image')+(count>1?' × '+count:'')+']':'');}
+// Первое сообщение создаёт чат, остальные возобновляют его. Рабочая папка определяется по карте;
+// актуальный контекст добавляется к каждому запросу.
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   if(await codex.refreshMcp())emit('event',tr('Запрошено обновление MCP перед ответом; возможности проверяются инструментами','MCP refresh queued before the turn; inspect tools for actual capabilities'));
@@ -195,6 +230,8 @@ async function sendCodex(text,images){
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
   const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});emit('accepted');if(createdHere)syncEditorSection(selected);if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
+// Вычисляем отпечаток файлов MCP, чтобы заметить обновление его установленной версии.
+// Это признак изменения файлов, а не подтверждение доступности конкретных инструментов.
 let sc2RuntimeFiles;
 function sc2RuntimeFingerprint(){
   if(!sc2RuntimeFiles){
@@ -211,6 +248,8 @@ function sc2RuntimeFingerprint(){
   for(const file of sc2RuntimeFiles){hash.update(file);try{hash.update(readFileSync(file));}catch{hash.update('missing');}}
   return hash.digest('hex');
 }
+// Получаем конфигурацию sc2editor из Codex: она нужна Claude и проверке версии MCP.
+// Поддерживаются stdio и HTTP; для заданного cwd используется вспомогательный процесс.
 function sc2Config(){
   if(!codexPath)return undefined;
   try{const config=JSON.parse(execFileSync(codexPath,['mcp','get','sc2editor','--json'],{encoding:'utf8',windowsHide:true,timeout:8000,stdio:['ignore','pipe','ignore']}));const t=config.transport;
@@ -225,6 +264,8 @@ function sc2Config(){
     if((t.type==='http'||t.type==='streamable_http') && t.url)return {sc2editor:{type:'http',url:t.url,headers:t.http_headers||{}}};
   }catch{}return undefined;
 }
+// Подключаем Claude Agent SDK. В текущей реализации требуется ANTHROPIC_API_KEY; одного входа на
+// сайт Claude недостаточно.
 async function claudeConnect(gen){
   try{claude=await import(process.env.SC2_AI_CLAUDE_MODULE?pathToFileURL(process.env.SC2_AI_CLAUDE_MODULE).href:'@anthropic-ai/claude-agent-sdk');}catch{throw Error(tr('Claude Agent SDK не установлен. Выполните npm ci в папке bridge.','Claude Agent SDK is not installed. Run npm ci in the bridge folder.'));}
   const loggedIn=!!process.env.ANTHROPIC_API_KEY;
@@ -233,10 +274,14 @@ async function claudeConnect(gen){
   emit('models_begin');for(const [id,name] of [['',tr('По умолчанию','Default')],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
   mcpStatus=sc2Config()?tr('SC2 MCP настроен для Claude','SC2 MCP configured for Claude'):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
+// Получаем локальные сессии Claude и группируем по рабочим папкам; созданные в редакторе отмечаем
+// IN_EDITOR.
 async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);const own=isEditorChat('claude',s.sessionId);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'',own?editorGroup:(s.cwd||''),own?'IN_EDITOR':(s.cwd?path.basename(s.cwd):''),own?'blue':'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
   for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
+// Передаём контекст карты и изображения; запросы разрешений показываем пользователю, остановку
+// выполняем через AbortController.
 async function sendClaude(text,images){
   if(!process.env.ANTHROPIC_API_KEY)throw Error(tr('Для Claude в этом приложении нужен ANTHROPIC_API_KEY из Claude Console. Вход по подписке Claude здесь не поддерживается.','Claude in this application requires ANTHROPIC_API_KEY from Claude Console. Claude subscription sign-in is not supported here.'));
   const current=selected;aborter=new AbortController();emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');running={provider:'claude'};
@@ -253,7 +298,11 @@ async function sendClaude(text,images){
     if(message.type==='result' && message.is_error){failed=true;emit('error',(message.errors||[]).join('\n')||tr('Claude завершился с ошибкой.','Claude returned an error.'));}
   }if(!failed)emit('status',tr('Готово','Ready'));await listClaude();}finally{running=null;aborter=null;emit('busy','0');}
 }
+// При смене провайдера очищаем выбор и увеличиваем generation, чтобы старые асинхронные результаты
+// не заменили новые.
 async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status',tr('Подключение...','Connecting...'));emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
+// Диспетчер команд окна C++: провайдер, чаты, модель, вход, сообщение, остановка и ответы на
+// запросы.
 async function handle(line){const [cmd,...args]=line.split('\t');const a=args.map(un64);
   if(cmd==='provider'){if(running)throw Error(tr('Остановите текущий ответ перед переключением.','Stop the current response before switching.'));await connect(a[0]==='claude'?'claude':'codex');}
   else if(cmd==='login'){
@@ -288,6 +337,8 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
   else if(cmd==='stop'){if(questionRequest){codex.send({id:questionRequest.requestId,error:{code:-32800,message:'Input cancelled by user.'}});questionRequest=null;}if(running?.provider==='codex'){if(running.turnId)await codex.request('turn/interrupt',{threadId:running.threadId,turnId:running.turnId});else running.stopRequested=true;}else aborter?.abort();}
   else if(cmd==='approve'){const f=approvals.get(a[0]);if(f){approvals.delete(a[0]);f(a[1]==='yes');}}
 }
+// Читаем команды до закрытия канала. Конфликт занятого чата показываем отдельно; ожидающие
+// подтверждения при выходе отклоняем.
 createInterface({input:process.stdin}).on('line',line=>{handle(line).catch(e=>{running=null;emit('busy','0');const message=e.message||String(e);emit('error',/already has an active writer/i.test(message)?tr('Этот чат занят другим процессом Codex. Продолжите его там или освободите чат и повторите. Текст и вложения сохранены.','This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.'):message);});}).on('close',()=>{for(const f of approvals.values())f(false);aborter?.abort();codex?.close();process.exit(0);});
 process.on('uncaughtException',e=>emit('error',e.message||String(e)));
 connect(process.argv[3]==='claude'?'claude':'codex').catch(e=>emit('error',e.message||String(e)));

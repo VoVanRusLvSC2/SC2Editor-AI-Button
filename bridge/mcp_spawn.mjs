@@ -1,4 +1,6 @@
 import {spawn} from 'node:child_process';
+// Обёртка запускает MCP с нужной рабочей папкой. Параметры передаются через окружение, а
+// stdin/stdout наследуются; служебную переменную не передаём дальше.
 const spec=JSON.parse(Buffer.from(process.env.SC2_AI_MCP_SPEC||'','base64').toString('utf8'));
 const env={...process.env};delete env.SC2_AI_MCP_SPEC;
 const child=spawn(spec.command,spec.args,{cwd:spec.cwd,env,stdio:'inherit',windowsHide:true});

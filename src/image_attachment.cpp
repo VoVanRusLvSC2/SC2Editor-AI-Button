@@ -9,7 +9,11 @@
 #include <algorithm>
 
 namespace {
+// Все входные изображения приводятся к PNG; лимиты ограничивают размеры картинки и временного
+// файла.
 constexpr ULONGLONG kMaxPngBytes=7ull*1024*1024;
+// Создаём уникальную PNG-копию во временной папке и отдельную миниатюру. При ошибке незавершённый
+// файл удаляется.
 bool SaveImage(Gdiplus::Bitmap* input,std::wstring& path,HBITMAP& preview){
     if(!input || input->GetLastStatus()!=Gdiplus::Ok)return false;
     UINT width=input->GetWidth(),height=input->GetHeight();
@@ -35,12 +39,16 @@ bool SaveImage(Gdiplus::Bitmap* input,std::wstring& path,HBITMAP& preview){
     HBITMAP bmp=nullptr;if(thumbnail.GetHBITMAP(Gdiplus::Color(255,255,255,255),&bmp)!=Gdiplus::Ok || !bmp){DeleteFileW(target.c_str());return false;}
     path=target;preview=bmp;return true;
 }
+// Запускаем GDI+ на время обработки изображения и завершаем после операции.
 template<class F> bool WithGdi(F work){ULONG_PTR token=0;Gdiplus::GdiplusStartupInput si;
     if(Gdiplus::GdiplusStartup(&token,&si,nullptr)!=Gdiplus::Ok)return false;bool result=work();Gdiplus::GdiplusShutdown(token);return result;}
 }
+// Загружаем выбранный файл и передаём общему обработчику изображений.
 bool ImageFromFile(const std::wstring& source,std::wstring& path,HBITMAP& preview){
     return WithGdi([&](){std::unique_ptr<Gdiplus::Bitmap> image(Gdiplus::Bitmap::FromFile(source.c_str(),FALSE));return SaveImage(image.get(),path,preview);});
 }
+// Буфер обмена может содержать bitmap или путь к файлу. Bitmap копируем до закрытия буфера:
+// исходный объект принадлежит Windows.
 bool ImageFromClipboard(HWND owner,std::wstring& path,HBITMAP& preview){
     if(!OpenClipboard(owner))return false;HBITMAP copied=nullptr;std::wstring file;
     if(IsClipboardFormatAvailable(CF_BITMAP)){
@@ -55,6 +63,8 @@ bool ImageFromClipboard(HWND owner,std::wstring& path,HBITMAP& preview){
     if(!copied)return false;
     bool ok=WithGdi([&](){Gdiplus::Bitmap bitmap(copied,nullptr);return SaveImage(&bitmap,path,preview);});DeleteObject(copied);return ok;
 }
+// Получаем ограниченный список файлов из буфера. Дополнительные ограничения вложений проверяются в
+// окне и bridge.
 bool ClipboardImageFiles(HWND owner,std::vector<std::wstring>& files){
     if(!OpenClipboard(owner))return false;
     auto drop=static_cast<HDROP>(GetClipboardData(CF_HDROP));

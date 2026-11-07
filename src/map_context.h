@@ -5,12 +5,17 @@
 #include <algorithm>
 #include <cwctype>
 
+// Контекст получается из заголовка и истории редактора. Он помогает найти карту, но не
+// подтверждает привязку MCP к документу в памяти.
 struct MapContext { std::wstring path, caption; bool dirty=false, inferred=false; };
+// Приводим регистр и слеши к единому виду только для сравнения Windows-путей.
 inline std::wstring NormalizeMapPath(std::wstring value) {
     for(auto& c:value)if(c==L'/')c=L'\\';
     if(!value.empty())CharLowerBuffW(value.data(),static_cast<DWORD>(value.size()));
     return value;
 }
+// Сокращённый путь сопоставляется по достаточно конкретным началу и концу. Совпадения только имени
+// файла недостаточно.
 inline bool MapCaptionMatches(const std::wstring& caption,const std::wstring& file){
     auto c=NormalizeMapPath(caption),p=NormalizeMapPath(file);auto dots=c.find(L"...");size_t dotsLen=3;
     if(dots==std::wstring::npos){dots=c.find(L'…');dotsLen=1;}
@@ -19,11 +24,15 @@ inline bool MapCaptionMatches(const std::wstring& caption,const std::wstring& fi
     if(prefix.size()!=3 || prefix[1]!=L':' || prefix[2]!=L'\\' || suffix.empty() || suffix[0]!=L'\\' || suffix.size()<20 || std::count(suffix.begin(),suffix.end(),L'\\')<3)return false;
     return p.size()>prefix.size()+suffix.size() && p.compare(0,prefix.size(),prefix)==0 && p.compare(p.size()-suffix.size(),suffix.size(),suffix)==0;
 }
+// Принимаем только существующие файлы карт и модов с ожидаемым расширением.
 inline bool ExistingMap(const std::wstring& path){
     auto normalized=NormalizeMapPath(path);
     if(normalized.size()<7 || (normalized.rfind(L".sc2map")!=normalized.size()-7 && normalized.rfind(L".sc2mod")!=normalized.size()-7))return false;
     DWORD attributes=GetFileAttributesW(path.c_str());return attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
 }
+// Читаем путь и звёздочку несохранённых изменений из заголовка. Если путь сокращён, принимаем
+// только единственное подходящее совпадение из истории. Флаг inferred сообщает, что такой путь ещё
+// нужно проверить через MCP.
 inline MapContext ReadMapContext(HWND owner){
     wchar_t title[32768]{};GetWindowTextW(owner,title,32768);std::wstring text(title);MapContext result;
     auto left=text.find(L" - ["),right=text.rfind(L"] - ");
