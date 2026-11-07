@@ -2,13 +2,14 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include <initializer_list>
 
 using Attach = BOOL (WINAPI*)(HWND, int, UINT);
 using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v9") && !GetWindow(h,GW_OWNER)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v10") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -21,17 +22,18 @@ int wmain() {
     if (!parent || !toolbar) return 2;
     ShowWindow(parent,SW_SHOWNOACTIVATE);
     SendMessageW(toolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
-    TBBUTTON existing[2]{};
-    for (int i = 0; i != 2; ++i) { existing[i].iBitmap = I_IMAGENONE; existing[i].idCommand = 100 + i; existing[i].fsState = TBSTATE_ENABLED; existing[i].fsStyle = BTNS_BUTTON; }
-    if (!SendMessageW(toolbar, TB_ADDBUTTONSW, 2, reinterpret_cast<LPARAM>(existing))) return 3;
+    TBBUTTON existing[3]{};
+    for (int i : {0, 2}) { existing[i].iBitmap = I_IMAGENONE; existing[i].idCommand = 100 + i / 2; existing[i].fsState = TBSTATE_ENABLED; existing[i].fsStyle = BTNS_BUTTON; }
+    existing[1].fsStyle = BTNS_SEP; existing[1].iBitmap = 8;
+    if (!SendMessageW(toolbar, TB_ADDBUTTONSW, 3, reinterpret_cast<LPARAM>(existing))) return 3;
     HMODULE module = LoadLibraryW(L"SC2AIButton.dll");
     if (!module) return 4;
     auto attach = reinterpret_cast<Attach>(GetProcAddress(module, "SC2AI_Attach"));
     auto detach = reinterpret_cast<Detach>(GetProcAddress(module, "SC2AI_Detach"));
-    if (!attach || !detach || attach(toolbar, 1, 100) || attach(toolbar, 3, 500) ||
-        !attach(toolbar, 1, 500) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 3 ||
+    if (!attach || !detach || attach(toolbar, 1, 100) || attach(toolbar, 4, 500) ||
+        !attach(toolbar, 1, 500) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 4 ||
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 500, 0) != 1 ||
-        SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 2 || detach(toolbar, 100)) return 5;
+        SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 3 || detach(toolbar, 100)) return 5;
     TBBUTTON ai{};
     if (!SendMessageW(toolbar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&ai)) || ai.iBitmap<0) return 11;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
@@ -43,6 +45,9 @@ int wmain() {
        !(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED) ||
        !IsWindow(GetDlgItem(aiWindow,109)) || !IsWindow(GetDlgItem(aiWindow,110)) ||
        IsWindowEnabled(GetDlgItem(aiWindow,108)))return 6;
+    if(SendMessageW(aiBar,TB_BUTTONCOUNT,0,0)!=3)return 21;
+    for(int i=0;i<3;++i){TBBUTTON item{};if(!SendMessageW(aiBar,TB_GETBUTTON,i,reinterpret_cast<LPARAM>(&item)) || (item.fsStyle&BTNS_SEP))return 22;}
+    TBBUTTON originalSeparator{};if(!SendMessageW(toolbar,TB_GETBUTTON,2,reinterpret_cast<LPARAM>(&originalSeparator)) || !(originalSeparator.fsStyle&BTNS_SEP))return 23;
     SendMessageW(aiWindow,WM_ACTIVATE,WA_INACTIVE,0);
     if(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED)return 18;
     SendMessageW(aiWindow,WM_ACTIVATE,WA_ACTIVE,0);
@@ -52,7 +57,7 @@ int wmain() {
     if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 20;
 
     SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
-    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v9",nullptr);
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v10",nullptr);
     if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102) || !GetDlgItem(settings,118))return 16;
     SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
     wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);
@@ -67,10 +72,10 @@ int wmain() {
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
     if (!IsWindow(aiWindow)) return 9;
-    if (!detach(toolbar, 500) || IsWindow(aiWindow) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 2 ||
-        SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 1) return 5;
+    if (!detach(toolbar, 500) || IsWindow(aiWindow) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 3 ||
+        SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 2) return 5;
     FreeLibrary(module);
     DestroyWindow(parent);
-    std::puts("PASS: AI selection follows active window and cannot be toggled off; provider selection and reopen");
+    std::puts("PASS: AI toolbar omits separators; selection and navigation remain correct");
     return 0;
 }

@@ -17,7 +17,8 @@ constexpr wchar_t kLegacyProperty5[] = L"SC2AIButton.context.v5";
 constexpr wchar_t kLegacyProperty6[] = L"SC2AIButton.context.v6";
 constexpr wchar_t kLegacyProperty7[] = L"SC2AIButton.context.v7";
 constexpr wchar_t kLegacyProperty8[] = L"SC2AIButton.context.v8";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v9";
+constexpr wchar_t kLegacyProperty9[] = L"SC2AIButton.context.v9";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v10";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
@@ -26,7 +27,8 @@ constexpr wchar_t kLegacyWindowClass5[] = L"SC2AIButton.Window.v5";
 constexpr wchar_t kLegacyWindowClass6[] = L"SC2AIButton.Window.v6";
 constexpr wchar_t kLegacyWindowClass7[] = L"SC2AIButton.Window.v7";
 constexpr wchar_t kLegacyWindowClass8[] = L"SC2AIButton.Window.v8";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v9";
+constexpr wchar_t kLegacyWindowClass9[] = L"SC2AIButton.Window.v9";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v10";
 constexpr UINT kCommand = 60000;
 HMODULE moduleHandle = nullptr;
 HHOOK threadHook = nullptr;
@@ -246,7 +248,7 @@ LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
 void OpenSettings(Context* ctx,HWND owner){
     if(IsWindow(ctx->settings)){SetForegroundWindow(ctx->settings);return;}
     WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=SettingsProc;wc.hInstance=moduleHandle;
-    wc.lpszClassName=L"SC2AIButton.Settings.v9";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.lpszClassName=L"SC2AIButton.Settings.v10";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
     RECT r{};GetWindowRect(owner,&r);
@@ -275,12 +277,11 @@ bool CopyToolbar(Context* ctx,HWND window) {
     SendMessageW(bar,TB_SETBUTTONSIZE,0,MAKELPARAM(buttonWidth,buttonHeight));
     for(int i=0;i<count;++i){
         TBBUTTON b{};if(!SendMessageW(ctx->toolbar,TB_GETBUTTON,i,reinterpret_cast<LPARAM>(&b)))return false;
+        if(b.fsStyle&BTNS_SEP)continue;
         // Only module navigation is meaningful in the AI workspace.
-        if(!(b.fsStyle&BTNS_SEP)){
-            b.iString=-1;b.dwData=0;b.fsStyle&=static_cast<BYTE>(~(BTNS_AUTOSIZE|BTNS_SHOWTEXT));b.fsState&=static_cast<BYTE>(~(TBSTATE_CHECKED|TBSTATE_PRESSED));
-            if(i<ai-9 || i>ai) b.fsState&=static_cast<BYTE>(~TBSTATE_ENABLED);
-            if(i==ai){b.fsStyle=BTNS_CHECK;b.fsState|=TBSTATE_ENABLED;}
-        }
+        b.iString=-1;b.dwData=0;b.fsStyle&=static_cast<BYTE>(~(BTNS_AUTOSIZE|BTNS_SHOWTEXT));b.fsState&=static_cast<BYTE>(~(TBSTATE_CHECKED|TBSTATE_PRESSED));
+        if(i<ai-9 || i>ai) b.fsState&=static_cast<BYTE>(~TBSTATE_ENABLED);
+        if(i==ai){b.fsStyle=BTNS_CHECK;b.fsState|=TBSTATE_ENABLED;}
         if(!SendMessageW(bar,TB_ADDBUTTONSW,1,reinterpret_cast<LPARAM>(&b)))return false;
     }
     SendMessageW(bar,TB_AUTOSIZE,0,0);return true;
@@ -508,7 +509,7 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
+    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -531,7 +532,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
         command==0 || command>0xffff || GetPropW(toolbar,kProperty)) return FALSE;
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=GetPropW(toolbar,kLegacyProperty8)?8:(GetPropW(toolbar,kLegacyProperty7)?7:(GetPropW(toolbar,kLegacyProperty6)?6:(GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0)))))));
+    int legacy=GetPropW(toolbar,kLegacyProperty9)?9:(GetPropW(toolbar,kLegacyProperty8)?8:(GetPropW(toolbar,kLegacyProperty7)?7:(GetPropW(toolbar,kLegacyProperty6)?6:(GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0))))))));
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) return FALSE;
     auto ctx=new(std::nothrow) Context{};
     if (!ctx) return FALSE;
@@ -622,7 +623,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     wchar_t barClass[64]{}; GetClassNameW(toolbar,barClass,64);
     int index=0;
     if (lstrcmpiW(barClass,TOOLBARCLASSNAMEW)) return TRUE;
-    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5) || GetPropW(toolbar,kLegacyProperty6) || GetPropW(toolbar,kLegacyProperty7) || GetPropW(toolbar,kLegacyProperty8)) {
+    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5) || GetPropW(toolbar,kLegacyProperty6) || GetPropW(toolbar,kLegacyProperty7) || GetPropW(toolbar,kLegacyProperty8) || GetPropW(toolbar,kLegacyProperty9)) {
         auto oldIndex=SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0);
         if (oldIndex>=0) SC2AI_Attach(toolbar,static_cast<int>(oldIndex),kCommand);
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
@@ -665,7 +666,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v9");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v10");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cwchar>
 static DWORD pid;static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){DWORD p=0;GetWindowThreadProcessId(h,&p);if(p!=pid)return TRUE;wchar_t c[128]{};GetClassNameW(h,c,128);if(!lstrcmpW(c,L"SC2AIButton.Window.v9") || !lstrcmpW(c,L"SC2AIButton.Window.v8"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){DWORD p=0;GetWindowThreadProcessId(h,&p);if(p!=pid)return TRUE;wchar_t c[128]{};GetClassNameW(h,c,128);if(!lstrcmpW(c,L"SC2AIButton.Window.v9") || !lstrcmpW(c,L"SC2AIButton.Window.v10"))ai=h;return TRUE;}
 int wmain(int argc,wchar_t**argv){if(argc!=3)return 1;pid=wcstoul(argv[2],nullptr,10);HDESK d=OpenDesktopW(argv[1],0,FALSE,DESKTOP_ENUMERATE|DESKTOP_READOBJECTS);if(!d||!SetThreadDesktop(d))return 2;EnumDesktopWindows(d,Find,0);if(!ai)return 3;
  HWND text=GetDlgItem(ai,105),input=GetDlgItem(ai,107),send=GetDlgItem(ai,108),stop=GetDlgItem(ai,116),status=GetDlgItem(ai,104);wchar_t s[300]{};SendMessageW(status,WM_GETTEXT,300,reinterpret_cast<LPARAM>(s));
  wchar_t body[4096]{};SendMessageW(text,WM_GETTEXT,4096,reinterpret_cast<LPARAM>(body));
