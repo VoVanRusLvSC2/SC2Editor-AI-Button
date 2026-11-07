@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cwchar>
 #include <string>
+#include "editor_window.h"
 
 namespace fs=std::filesystem;
 static uintptr_t RemoteModule(DWORD pid, const wchar_t* name, bool fullPath) {
@@ -42,9 +43,7 @@ static bool RunRemote(HANDLE process, uintptr_t address, void* argument, DWORD& 
 struct Search { DWORD pid; bool ambiguous; };
 static BOOL CALLBACK FindVisible(HWND window, LPARAM raw) {
     auto search=reinterpret_cast<Search*>(raw);
-    if (!IsWindowVisible(window)) return TRUE;
-    wchar_t title[1024]{},cls[64]{}; GetWindowTextW(window,title,1024); GetClassNameW(window,cls,64);
-    if (lstrcmpW(cls,L"#32770") || !wcsstr(title,L" - StarCraft II Editor") || !GetDlgItem(window,10)) return TRUE;
+    if (!EditorModuleToolbar(window)) return TRUE;
     DWORD pid=0; GetWindowThreadProcessId(window,&pid);
     HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);
     wchar_t path[32768]{}; DWORD size=32768;

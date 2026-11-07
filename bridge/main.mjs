@@ -2,6 +2,7 @@ import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {existsSync, readdirSync, statSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 
 // A private stdio channel connects this process only to the editor extension.
@@ -101,7 +102,7 @@ async function codexConnect(gen){
 async function listCodex(gen=generation){
   // The desktop app stores legacy project names and assignments separately from
   // app-server threads. Read them only for display; never modify desktop state.
-  let state={};try{state=JSON.parse(readFileSync(path.join(process.env.CODEX_HOME||path.join(process.env.USERPROFILE||'','.codex'),'.codex-global-state.json'),'utf8'));}catch{}
+  let state={};try{state=JSON.parse(readFileSync(path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'.codex-global-state.json'),'utf8'));}catch{}
   const projects=state['local-projects']||{},appearances=state['project-appearances']||{},assignments=state['thread-project-assignments']||{},projectless=new Set(state['projectless-thread-ids']||[]);
   const migrated=Object.values(state['app-server-project-id-by-legacy-project-id-by-host']||{}).reduce((all,entry)=>Object.assign(all,entry),{});
   const findProject=t=>{

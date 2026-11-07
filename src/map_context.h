@@ -25,7 +25,7 @@ inline bool ExistingMap(const std::wstring& path){
 }
 inline MapContext ReadMapContext(HWND owner){
     wchar_t title[32768]{};GetWindowTextW(owner,title,32768);std::wstring text(title);MapContext result;
-    auto left=text.find(L" - ["),right=text.rfind(L"] - StarCraft II Editor");
+    auto left=text.find(L" - ["),right=text.rfind(L"] - ");
     if(left==std::wstring::npos || right==std::wstring::npos || right<=left+4)return result;
     result.caption=text.substr(left+4,right-left-4);
     if(!result.caption.empty() && result.caption.back()==L'*'){result.dirty=true;result.caption.pop_back();}
@@ -36,7 +36,7 @@ inline MapContext ReadMapContext(HWND owner){
     for(int i=0;;++i){wchar_t name[512]{},data[32768]{};DWORD nameSize=512,dataSize=sizeof(data),type=0;
         LONG rc=RegEnumValueW(key,i,name,&nameSize,nullptr,&type,reinterpret_cast<BYTE*>(data),&dataSize);
         if(rc==ERROR_NO_MORE_ITEMS)break;
-        if(rc!=ERROR_SUCCESS || type!=REG_SZ || (wcsncmp(name,L"Recent Document ",16) && wcsncmp(name,L"Open Document ",14)))continue;
+        if(rc!=ERROR_SUCCESS || type!=REG_SZ)continue;
         data[32767]=0;std::wstring candidate(data);
         if(!MapCaptionMatches(result.caption,candidate) || !ExistingMap(candidate))continue;
         auto normalized=NormalizeMapPath(candidate);bool duplicate=false;

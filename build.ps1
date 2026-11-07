@@ -19,6 +19,8 @@ try {
     if ($LASTEXITCODE) { throw 'Loader build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\toolbar_test.cpp') /Fe:toolbar_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\editor_window_test.cpp') /Fe:editor_window_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Editor window test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\map_context_test.cpp') /Fe:map_context_test.exe user32.lib advapi32.lib
     if ($LASTEXITCODE) { throw 'Map context test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\image_attachment_test.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:image_attachment_test.exe user32.lib gdi32.lib gdiplus.lib shell32.lib
@@ -51,6 +53,8 @@ try {
     if ($LASTEXITCODE) { throw 'Multi-version upgrade test build failed.' }
     & .\toolbar_test.exe
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
+    & .\editor_window_test.exe
+    if ($LASTEXITCODE) { throw 'Editor window test failed.' }
     & .\map_context_test.exe
     if ($LASTEXITCODE) { throw 'Map context test failed.' }
     & .\image_attachment_test.exe

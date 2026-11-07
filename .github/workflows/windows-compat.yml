@@ -1,0 +1,27 @@
+name: Windows compatibility
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build and run native tests
+        shell: pwsh
+        run: ./build.ps1
+      - name: Test Codex and Claude bridge in both languages
+        shell: pwsh
+        run: |
+          node tests/bridge_test.mjs en
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/bridge_test.mjs ru
+          exit $LASTEXITCODE
