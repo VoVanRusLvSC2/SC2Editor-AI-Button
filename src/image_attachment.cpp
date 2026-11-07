@@ -55,3 +55,14 @@ bool ImageFromClipboard(HWND owner,std::wstring& path,HBITMAP& preview){
     if(!copied)return false;
     bool ok=WithGdi([&](){Gdiplus::Bitmap bitmap(copied,nullptr);return SaveImage(&bitmap,path,preview);});DeleteObject(copied);return ok;
 }
+bool ClipboardImageFiles(HWND owner,std::vector<std::wstring>& files){
+    if(!OpenClipboard(owner))return false;
+    auto drop=static_cast<HDROP>(GetClipboardData(CF_HDROP));
+    UINT count=drop?DragQueryFileW(drop,0xffffffff,nullptr,0):0;
+    for(UINT i=0;i<count && i<6;++i){
+        UINT length=DragQueryFileW(drop,i,nullptr,0);if(!length || length>=32768)break;
+        std::wstring name(static_cast<size_t>(length)+1,L'\0');
+        if(!DragQueryFileW(drop,i,name.data(),length+1))break;name.resize(length);files.push_back(name);
+    }
+    CloseClipboard();return !files.empty();
+}

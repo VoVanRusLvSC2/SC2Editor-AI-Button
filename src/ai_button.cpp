@@ -27,7 +27,8 @@ constexpr wchar_t kLegacyProperty9[] = L"SC2AIButton.context.v9";
 constexpr wchar_t kLegacyProperty10[] = L"SC2AIButton.context.v10";
 constexpr wchar_t kLegacyProperty11[] = L"SC2AIButton.context.v11";
 constexpr wchar_t kLegacyProperty12[] = L"SC2AIButton.context.v12";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v13";
+constexpr wchar_t kLegacyProperty13[] = L"SC2AIButton.context.v13";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v14";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
@@ -40,7 +41,10 @@ constexpr wchar_t kLegacyWindowClass9[] = L"SC2AIButton.Window.v9";
 constexpr wchar_t kLegacyWindowClass10[] = L"SC2AIButton.Window.v10";
 constexpr wchar_t kLegacyWindowClass11[] = L"SC2AIButton.Window.v11";
 constexpr wchar_t kLegacyWindowClass12[] = L"SC2AIButton.Window.v12";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v13";
+constexpr wchar_t kLegacyWindowClass13[] = L"SC2AIButton.Window.v13";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v14";
+constexpr size_t kMaxImages=5;
+constexpr ULONGLONG kMaxImagesBytes=20ull*1024*1024;
 constexpr UINT kCommand = 60000;
 HMODULE moduleHandle = nullptr;
 HMODULE richEditModule = nullptr;
@@ -51,6 +55,7 @@ volatile LONG activeButtons = 0;
 HWND currentAIWindow = nullptr;
 bool selectedClaude = false;
 
+struct ImageAttachment { std::wstring path; HBITMAP bitmap; ULONGLONG bytes; };
 struct Context {
     HWND toolbar; HWND owner; HWND window; UINT command;
     int legacy; bool ownsImages; HIMAGELIST images;
@@ -60,7 +65,7 @@ struct Context {
     HIMAGELIST aiImages;
     BridgeState* bridge; HWND chatList,mcp; HFONT chatFont;
     std::vector<std::wstring> threadIds,modelIds;std::wstring selectedId;bool ready,busy,awaitingAnswer,windowActive,russian,rich;
-    HWND attach,preview,removeImage,imageLabel;HBITMAP imagePreview;std::wstring imagePath;
+    HWND attach,previews[kMaxImages],removes[kMaxImages];std::vector<ImageAttachment> attachments;
 };
 const wchar_t* Tr(Context* ctx,const wchar_t* ru,const wchar_t* en){return ctx->russian?ru:en;}
 bool RussianEditor(HWND owner){
@@ -220,7 +225,7 @@ void ReleaseOwnedImages(Context* ctx) {
 enum : int { kToolbar=100, kCodex=101, kClaude=102, kHeading=103,
              kStatus=104, kDescription=105, kHistory=106, kInput=107, kSend=108,
              kSettings=109, kModel=110, kChatList=113, kNewChat=114, kRefresh=115, kStop=116, kMcp=117, kLogin=118,
-             kAttach=119,kPreview=120,kRemoveImage=121,kImageLabel=122 };
+             kAttach=119,kPreviewBase=130,kRemoveImageBase=140 };
 
 HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int id) {
     HWND child=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,0,0,0,0,
@@ -271,7 +276,7 @@ LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
 void OpenSettings(Context* ctx,HWND owner){
     if(IsWindow(ctx->settings)){SetForegroundWindow(ctx->settings);return;}
     WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=SettingsProc;wc.hInstance=moduleHandle;
-    wc.lpszClassName=L"SC2AIButton.Settings.v13";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.lpszClassName=L"SC2AIButton.Settings.v14";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
     RECT r{};GetWindowRect(owner,&r);
@@ -321,34 +326,54 @@ void LayoutControls(Context* ctx,HWND window) {
     MoveWindow(ctx->config,mainX+mainW-115,top-4,115,30,TRUE);
     MoveWindow(ctx->mcp,mainX,top+32,mainW,22,TRUE);
     int inputY=height-80;if(inputY<top+160)inputY=top+160;
-    int attachmentSpace=ctx->imagePath.empty()?0:64;
+    int attachmentSpace=ctx->attachments.empty()?0:64;
     MoveWindow(ctx->description,mainX,top+60,mainW,inputY-top-72-attachmentSpace,TRUE);
     MoveWindow(ctx->history,sidebarX,top,side-24,22,TRUE);
     MoveWindow(ctx->chatList,sidebarX,top+30,side-30,height-top-44,TRUE);
     MoveWindow(ctx->attach,mainX,inputY,86,32,TRUE);
     MoveWindow(ctx->input,mainX+94,inputY,mainW>215?mainW-206:mainW,52,TRUE);
     MoveWindow(ctx->send,mainX+mainW-104,inputY,104,32,TRUE);
-    MoveWindow(ctx->preview,mainX,inputY-60,72,54,TRUE);
-    MoveWindow(ctx->imageLabel,mainX+82,inputY-53,mainW-150,22,TRUE);
-    MoveWindow(ctx->removeImage,mainX+mainW-34,inputY-58,30,26,TRUE);
-    ShowWindow(ctx->preview,attachmentSpace?SW_SHOW:SW_HIDE);ShowWindow(ctx->imageLabel,attachmentSpace?SW_SHOW:SW_HIDE);ShowWindow(ctx->removeImage,attachmentSpace?SW_SHOW:SW_HIDE);
+    for(size_t i=0;i<kMaxImages;++i){
+        int x=mainX+static_cast<int>(i)*102;
+        MoveWindow(ctx->previews[i],x,inputY-60,72,54,TRUE);
+        MoveWindow(ctx->removes[i],x+74,inputY-60,24,24,TRUE);
+        ShowWindow(ctx->previews[i],i<ctx->attachments.size()?SW_SHOW:SW_HIDE);
+        ShowWindow(ctx->removes[i],i<ctx->attachments.size()?SW_SHOW:SW_HIDE);
+    }
 }
-void ClearImage(Context* ctx,bool discard){
-    if(discard && !ctx->imagePath.empty())DeleteFileW(ctx->imagePath.c_str());
-    ctx->imagePath.clear();if(ctx->preview)SendMessageW(ctx->preview,STM_SETIMAGE,IMAGE_BITMAP,0);
-    if(ctx->imagePreview){DeleteObject(ctx->imagePreview);ctx->imagePreview=nullptr;}
+void RefreshImages(Context* ctx){
+    for(size_t i=0;i<kMaxImages;++i)if(ctx->previews[i])SendMessageW(ctx->previews[i],STM_SETIMAGE,IMAGE_BITMAP,i<ctx->attachments.size()?reinterpret_cast<LPARAM>(ctx->attachments[i].bitmap):0);
     if(IsWindow(ctx->window))LayoutControls(ctx,ctx->window);
 }
-void ShowImage(Context* ctx,const std::wstring& path,HBITMAP bitmap){
-    ClearImage(ctx,true);ctx->imagePath=path;ctx->imagePreview=bitmap;
-    SendMessageW(ctx->preview,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
-    SetWindowTextW(ctx->imageLabel,Tr(ctx,L"Изображение прикреплено",L"Image attached"));LayoutControls(ctx,ctx->window);
+void ClearImages(Context* ctx,bool discard){
+    for(auto preview:ctx->previews)if(preview)SendMessageW(preview,STM_SETIMAGE,IMAGE_BITMAP,0);
+    for(auto& image:ctx->attachments){if(discard)DeleteFileW(image.path.c_str());DeleteObject(image.bitmap);}
+    ctx->attachments.clear();RefreshImages(ctx);
+}
+void RemoveImage(Context* ctx,size_t index){
+    if(index>=ctx->attachments.size())return;
+    for(auto preview:ctx->previews)SendMessageW(preview,STM_SETIMAGE,IMAGE_BITMAP,0);
+    auto& image=ctx->attachments[index];DeleteFileW(image.path.c_str());DeleteObject(image.bitmap);
+    ctx->attachments.erase(ctx->attachments.begin()+index);RefreshImages(ctx);
+}
+bool AddImage(Context* ctx,const std::wstring& path,HBITMAP bitmap){
+    WIN32_FILE_ATTRIBUTE_DATA data{};ULONGLONG size=0;
+    if(GetFileAttributesExW(path.c_str(),GetFileExInfoStandard,&data))size=(static_cast<ULONGLONG>(data.nFileSizeHigh)<<32)|data.nFileSizeLow;
+    ULONGLONG total=size;for(const auto& image:ctx->attachments)total+=image.bytes;
+    if(!size || ctx->attachments.size()>=kMaxImages || total>kMaxImagesBytes){
+        DeleteFileW(path.c_str());DeleteObject(bitmap);
+        MessageBoxW(ctx->window,Tr(ctx,L"Можно прикрепить до 5 изображений общим размером до 20 МБ.",L"You can attach up to 5 images with a combined size of 20 MB."),Tr(ctx,L"Изображения",L"Images"),MB_OK|MB_ICONWARNING);return false;
+    }
+    ctx->attachments.push_back({path,bitmap,size});RefreshImages(ctx);return true;
 }
 void ImageError(Context* ctx){MessageBoxW(ctx->window,Tr(ctx,L"Не удалось добавить изображение. Используйте PNG, JPEG, GIF или BMP размером до 7 МБ после преобразования.",L"Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion."),Tr(ctx,L"Изображение",L"Image"),MB_OK|MB_ICONERROR);}
 LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR raw){
     auto ctx=reinterpret_cast<Context*>(raw);
     if(msg==WM_PASTE && ctx && !ctx->busy && (IsClipboardFormatAvailable(CF_BITMAP) || IsClipboardFormatAvailable(CF_HDROP))){
-        std::wstring path;HBITMAP bitmap=nullptr;if(ImageFromClipboard(ctx->window,path,bitmap))ShowImage(ctx,path,bitmap);else ImageError(ctx);return 0;
+        if(!IsClipboardFormatAvailable(CF_BITMAP) && IsClipboardFormatAvailable(CF_HDROP)){
+            std::vector<std::wstring> files;if(!ClipboardImageFiles(ctx->window,files)){ImageError(ctx);return 0;}
+            for(const auto& file:files){std::wstring path;HBITMAP bitmap=nullptr;if(!ImageFromFile(file,path,bitmap)){ImageError(ctx);break;}if(!AddImage(ctx,path,bitmap))break;}
+        }else{std::wstring path;HBITMAP bitmap=nullptr;if(ImageFromClipboard(ctx->window,path,bitmap))AddImage(ctx,path,bitmap);else ImageError(ctx);}return 0;
     }
     if(msg==WM_NCDESTROY)RemoveWindowSubclass(input,InputProc,id);
     return DefSubclassProc(input,msg,w,l);
@@ -356,8 +381,12 @@ LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWO
 void ChooseImage(Context* ctx){
     wchar_t file[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=ctx->window;
     dialog.lpstrFilter=Tr(ctx,L"Изображения (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0Все файлы\0*.*\0\0",L"Images (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0All files\0*.*\0\0");
-    dialog.lpstrFile=file;dialog.nMaxFile=32768;dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER;
-    if(GetOpenFileNameW(&dialog)){std::wstring path;HBITMAP bitmap=nullptr;if(ImageFromFile(file,path,bitmap))ShowImage(ctx,path,bitmap);else ImageError(ctx);}
+    dialog.lpstrFile=file;dialog.nMaxFile=32768;dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER|OFN_ALLOWMULTISELECT;
+    if(GetOpenFileNameW(&dialog)){
+        std::wstring first(file);const wchar_t* next=file+first.size()+1;
+        auto add=[&](const std::wstring& source){std::wstring path;HBITMAP bitmap=nullptr;if(!ImageFromFile(source,path,bitmap)){ImageError(ctx);return false;}return AddImage(ctx,path,bitmap);};
+        if(!*next)add(first);else for(;*next;next+=wcslen(next)+1)if(!add(first+L"\\"+next))break;
+    }
 }
 std::wstring Workspace(HWND owner){
     auto file=ReadMapContext(owner).path;size_t slash=file.find_last_of(L"\\/");
@@ -395,7 +424,7 @@ void UpdateControls(Context* ctx){
     SetWindowTextW(ctx->send,ctx->awaitingAnswer?Tr(ctx,L"Ответить",L"Reply"):(ctx->busy?Tr(ctx,L"Остановить",L"Stop"):Tr(ctx,L"Отправить",L"Send")));
     EnableWindow(ctx->model,ctx->ready && !ctx->busy && !ctx->modelIds.empty());
     EnableWindow(ctx->chatList,ctx->ready && !ctx->busy);
-    EnableWindow(ctx->attach,ctx->ready && !ctx->busy);EnableWindow(ctx->removeImage,ctx->ready && !ctx->busy);
+    EnableWindow(ctx->attach,ctx->ready && !ctx->busy);for(auto button:ctx->removes)EnableWindow(button,ctx->ready && !ctx->busy);
 }
 void OnBridge(Context* ctx,const BridgeEvent& e){
     if(e.source!=ctx->bridge)return;
@@ -453,13 +482,15 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         ctx->input=Control(window,L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,kInput);
         SendMessageW(ctx->input,EM_SETLIMITTEXT,12000,0);
         ctx->attach=Control(window,L"BUTTON",Tr(ctx,L"Картинка",L"Image"),BS_PUSHBUTTON,kAttach);
-        ctx->preview=Control(window,L"STATIC",L"",SS_BITMAP|SS_CENTERIMAGE,kPreview);
-        ctx->imageLabel=Control(window,L"STATIC",L"",SS_LEFT,kImageLabel);
-        ctx->removeImage=Control(window,L"BUTTON",L"×",BS_PUSHBUTTON,kRemoveImage);
+        for(size_t i=0;i<kMaxImages;++i){
+            ctx->previews[i]=Control(window,L"STATIC",L"",SS_BITMAP|SS_CENTERIMAGE,kPreviewBase+static_cast<int>(i));
+            ctx->removes[i]=Control(window,L"BUTTON",L"×",BS_PUSHBUTTON,kRemoveImageBase+static_cast<int>(i));
+            if(!ctx->previews[i] || !ctx->removes[i])return -1;
+            ShowWindow(ctx->previews[i],SW_HIDE);ShowWindow(ctx->removes[i],SW_HIDE);
+        }
         ctx->send=Control(window,L"BUTTON",Tr(ctx,L"Отправить",L"Send"),BS_PUSHBUTTON,kSend);
-        if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config||!ctx->chatList||!ctx->mcp||!ctx->attach||!ctx->preview||!ctx->imageLabel||!ctx->removeImage)return -1;
+        if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config||!ctx->chatList||!ctx->mcp||!ctx->attach)return -1;
         if(!SetWindowSubclass(ctx->input,InputProc,1,reinterpret_cast<DWORD_PTR>(ctx)))return -1;
-        ShowWindow(ctx->preview,SW_HIDE);ShowWindow(ctx->imageLabel,SW_HIDE);ShowWindow(ctx->removeImage,SW_HIDE);
         ctx->ready=false;ctx->busy=false;UpdateControls(ctx);
         ctx->bridge=StartBridge(window,moduleHandle,Workspace(ctx->owner),selectedClaude,ctx->russian);
         if(ctx->bridge)SendMapContext(ctx);
@@ -485,14 +516,15 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         UINT id=LOWORD(w);HWND source=reinterpret_cast<HWND>(l);
         if(id==kSettings && source==ctx->config){OpenSettings(ctx,window);return 0;}
         if(id==kAttach && source==ctx->attach && !ctx->busy){ChooseImage(ctx);return 0;}
-        if(id==kRemoveImage && source==ctx->removeImage && !ctx->busy){ClearImage(ctx,true);return 0;}
+        if(id>=kRemoveImageBase && id<kRemoveImageBase+kMaxImages && source==ctx->removes[id-kRemoveImageBase] && !ctx->busy){RemoveImage(ctx,id-kRemoveImageBase);return 0;}
         if(id==kSend && source==ctx->send){
             if(ctx->busy && !ctx->awaitingAnswer){SendBridge(ctx->bridge,"stop");return 0;}
-            int length=GetWindowTextLengthW(ctx->input);if((length>0 || (!ctx->imagePath.empty() && !ctx->awaitingAnswer)) && length<=12000){std::wstring text(static_cast<size_t>(length)+1,L'\0');
+            int length=GetWindowTextLengthW(ctx->input);if((length>0 || (!ctx->attachments.empty() && !ctx->awaitingAnswer)) && length<=12000){std::wstring text(static_cast<size_t>(length)+1,L'\0');
                 GetWindowTextW(ctx->input,text.data(),length+1);text.resize(length);
                 bool answer=ctx->awaitingAnswer;
                 if(!answer)SendMapContext(ctx);
-                if(SendBridge(ctx->bridge,answer?"answer":"send",{text,answer?L"":ctx->imagePath})){SetWindowTextW(ctx->input,L"");if(answer){AppendEntry(ctx,std::wstring(Tr(ctx,L"Вы: ",L"You: "))+text);ctx->awaitingAnswer=false;}else if(!ctx->imagePath.empty())ClearImage(ctx,false);ctx->busy=true;UpdateControls(ctx);}else SetWindowTextW(ctx->status,Tr(ctx,L"Ошибка связи",L"Connection error"));}return 0;
+                std::vector<std::wstring> fields{text};if(!answer)for(const auto& image:ctx->attachments)fields.push_back(image.path);
+                if(SendBridge(ctx->bridge,answer?"answer":"send",fields)){SetWindowTextW(ctx->input,L"");if(answer){AppendEntry(ctx,std::wstring(Tr(ctx,L"Вы: ",L"You: "))+text);ctx->awaitingAnswer=false;}else if(!ctx->attachments.empty())ClearImages(ctx,false);ctx->busy=true;UpdateControls(ctx);}else SetWindowTextW(ctx->status,Tr(ctx,L"Ошибка связи",L"Connection error"));}return 0;
         }
         if(id==kChatList && source==ctx->chatList && HIWORD(w)==LBN_SELCHANGE){int i=static_cast<int>(SendMessageW(source,LB_GETCURSEL,0,0));if(i==0){SendBridge(ctx->bridge,"new");ctx->selectedId.clear();}else if(i>0 && static_cast<size_t>(i-1)<ctx->threadIds.size())SendBridge(ctx->bridge,"open",{ctx->threadIds[i-1]});return 0;}
         if(id==kModel && source==ctx->model && HIWORD(w)==CBN_SELCHANGE){int i=static_cast<int>(SendMessageW(source,CB_GETCURSEL,0,0));if(i>=0 && static_cast<size_t>(i)<ctx->modelIds.size())SendBridge(ctx->bridge,"model",{ctx->modelIds[i]});return 0;}
@@ -521,7 +553,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         StopBridge(ctx->bridge);ctx->bridge=nullptr;
         MSG pending{};while(PeekMessageW(&pending,window,WM_AI_BRIDGE,WM_AI_BRIDGE,PM_REMOVE))delete reinterpret_cast<BridgeEvent*>(pending.lParam);
         ctx->window=nullptr;ctx->aiToolbar=nullptr;
-        ClearImage(ctx,true);
+        ClearImages(ctx,true);
         if(ctx->aiImages){ImageList_Destroy(ctx->aiImages);ctx->aiImages=nullptr;}
         if(ctx->chatFont){DeleteObject(ctx->chatFont);ctx->chatFont=nullptr;}
     }
@@ -592,7 +624,7 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
+    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12) || !lstrcmpW(cls,kLegacyWindowClass13)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -615,7 +647,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
         command==0 || command>0xffff || GetPropW(toolbar,kProperty)) return FALSE;
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=GetPropW(toolbar,kLegacyProperty12)?12:(GetPropW(toolbar,kLegacyProperty11)?11:(GetPropW(toolbar,kLegacyProperty10)?10:(GetPropW(toolbar,kLegacyProperty9)?9:(GetPropW(toolbar,kLegacyProperty8)?8:(GetPropW(toolbar,kLegacyProperty7)?7:(GetPropW(toolbar,kLegacyProperty6)?6:(GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0)))))))))));
+    int legacy=GetPropW(toolbar,kLegacyProperty13)?13:(GetPropW(toolbar,kLegacyProperty12)?12:(GetPropW(toolbar,kLegacyProperty11)?11:(GetPropW(toolbar,kLegacyProperty10)?10:(GetPropW(toolbar,kLegacyProperty9)?9:(GetPropW(toolbar,kLegacyProperty8)?8:(GetPropW(toolbar,kLegacyProperty7)?7:(GetPropW(toolbar,kLegacyProperty6)?6:(GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0))))))))))));
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) return FALSE;
     auto ctx=new(std::nothrow) Context{};
     if (!ctx) return FALSE;
@@ -706,7 +738,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     wchar_t barClass[64]{}; GetClassNameW(toolbar,barClass,64);
     int index=0;
     if (lstrcmpiW(barClass,TOOLBARCLASSNAMEW)) return TRUE;
-    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5) || GetPropW(toolbar,kLegacyProperty6) || GetPropW(toolbar,kLegacyProperty7) || GetPropW(toolbar,kLegacyProperty8) || GetPropW(toolbar,kLegacyProperty9) || GetPropW(toolbar,kLegacyProperty10) || GetPropW(toolbar,kLegacyProperty11) || GetPropW(toolbar,kLegacyProperty12)) {
+    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5) || GetPropW(toolbar,kLegacyProperty6) || GetPropW(toolbar,kLegacyProperty7) || GetPropW(toolbar,kLegacyProperty8) || GetPropW(toolbar,kLegacyProperty9) || GetPropW(toolbar,kLegacyProperty10) || GetPropW(toolbar,kLegacyProperty11) || GetPropW(toolbar,kLegacyProperty12) || GetPropW(toolbar,kLegacyProperty13)) {
         auto oldIndex=SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0);
         if (oldIndex>=0) SC2AI_Attach(toolbar,static_cast<int>(oldIndex),kCommand);
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
@@ -750,7 +782,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v13");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v14");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }
