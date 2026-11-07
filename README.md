@@ -6,13 +6,14 @@ An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It a
 
 1. Install Node.js 18.14 or newer with npm. Start the supported 64-bit Editor and open a map.
 2. Extract the release and run `Start AI Button.cmd`, then click AI. Codex requires a compatible installed and signed-in Codex application or `codex.exe`.
-3. For Claude, run `Setup Claude.cmd` to install the official Agent SDK. Choose “Войти в Claude” in AI settings or run `Login Claude.cmd`; sign in to your own account, then select Claude again.
+3. Select Codex in AI settings and press “Sign in to Codex”. Complete sign-in with your ChatGPT account in the browser. An existing Codex desktop account is reused when available.
+4. For Claude, run `Setup Claude.cmd`, sign in to Claude Console from AI settings, create an API key and set the Windows user environment variable `ANTHROPIC_API_KEY`. Restart the Editor. API usage is billed separately; Claude.ai subscription credentials cannot be used by this third-party Agent SDK application. Never send the key in chat.
 
 Game installation and user paths are discovered locally, and module windows are identified independently of their caption language. The executable version and toolbar layout are checked to avoid attaching to unsupported builds. Native tests have run on Windows 11 x64; automated builds also run on Windows Server 2022 and 2025. This does not establish compatibility with every Windows version, UI scale, or Editor language. Chats require compatible Node.js and Codex or Claude installations.
 
 The DLL is loaded into the running Editor without modifying the game installation. If several Editors are open, run `SC2AILoader.exe --pid <id>`. AI is a separate extension window, not a registered native Editor module.
 
-Chats appear on the left; choose “＋ Новый чат” in the list to start one. The send button changes to stop while a response is running. Codex lists locally available app-server threads; remote or cloud threads may not be accessible. Claude lists local Claude Code sessions, which are distinct from Claude's website chats. Claude Code requires an eligible paid plan or separately billed API access; the free Claude plan alone does not include it ([Anthropic help](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-max-or-ultra-plan)).
+Chats appear on the left; choose “＋ New chat” in the list to start one. The send button changes to stop while a response is running. Codex lists locally available app-server threads; remote or cloud threads may not be accessible. Claude lists local Claude Code sessions, distinct from Claude website chats. See [Anthropic authentication rules](https://code.claude.com/docs/en/legal-and-compliance) and [API key setup](https://platform.claude.com/docs/en/get-api-key).
 
 The extension detects English and Russian from the Editor menu; other languages fall back to English. User messages and assistant responses are not translated. The conversation distinguishes roles and tool activity with color, and long command entries are shortened in the display.
 

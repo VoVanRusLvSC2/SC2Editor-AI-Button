@@ -11,6 +11,7 @@ createInterface({input:process.stdin}).on('line',line=>{
   switch(m.method){
     case 'initialize':reply(m.id,{});break;
     case 'account/read':reply(m.id,{account:{type:'chatgpt'}});break;
+    case 'account/login/start':reply(m.id,{type:'chatgpt',loginId:'login-1',authUrl:'https://chatgpt.com/auth/test'});setTimeout(()=>event('account/login/completed',{loginId:'login-1',success:true}),20);break;
     case 'model/list':reply(m.id,{data:[{model:'test-model',displayName:'Test',isDefault:true}]});break;
     case 'mcpServerStatus/list':reply(m.id,{data:[{name:'sc2editor',tools:{one:{}}}]});break;
     case 'thread/list':reply(m.id,{data:[{id:'test-1',name:'Тест',projectId:'project-test',status:{type:'idle'}}]});break;

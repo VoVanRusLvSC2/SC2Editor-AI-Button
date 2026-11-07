@@ -254,6 +254,10 @@ void SelectProvider(Context* ctx,bool claude) {
     ctx->claudeSelected=claude;selectedClaude=claude;
     if(IsWindow(ctx->codex))SendMessageW(ctx->codex,BM_SETCHECK,claude?BST_UNCHECKED:BST_CHECKED,0);
     if(IsWindow(ctx->claude))SendMessageW(ctx->claude,BM_SETCHECK,claude?BST_CHECKED:BST_UNCHECKED,0);
+    if(IsWindow(ctx->settings)){
+        SetWindowTextW(GetDlgItem(ctx->settings,kLogin),claude?Tr(ctx,L"Открыть Claude Console",L"Open Claude Console"):Tr(ctx,L"Войти в Codex",L"Sign in to Codex"));
+        SetWindowTextW(GetDlgItem(ctx->settings,112),claude?Tr(ctx,L"Войдите в Console, создайте ключ ANTHROPIC_API_KEY в переменных среды Windows и перезапустите редактор. API оплачивается отдельно.",L"Sign in to Console, set ANTHROPIC_API_KEY in Windows environment variables and restart the Editor. API is billed separately."):Tr(ctx,L"Вход откроется в браузере. Используйте свой аккаунт ChatGPT.",L"Sign in in your browser with your ChatGPT account."));
+    }
     SetWindowTextW(ctx->heading,claude?L"Claude":L"Codex");
 }
 LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
@@ -264,19 +268,19 @@ LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
         HWND label=Control(window,L"STATIC",Tr(ctx,L"Выберите помощника:",L"Choose an assistant:"),SS_LEFT,111);
         ctx->codex=Control(window,L"BUTTON",L"Codex",BS_AUTORADIOBUTTON|WS_GROUP,kCodex);
         ctx->claude=Control(window,L"BUTTON",L"Claude",BS_AUTORADIOBUTTON,kClaude);
-        HWND note=Control(window,L"STATIC",Tr(ctx,L"После входа выберите Claude заново, чтобы обновить подключение.",L"After signing in, select Claude again to refresh the connection."),SS_LEFT,112);
-        HWND login=Control(window,L"BUTTON",Tr(ctx,L"Войти в Claude",L"Sign in to Claude"),BS_PUSHBUTTON,kLogin);
+        HWND note=Control(window,L"STATIC",L"",SS_LEFT,112);
+        HWND login=Control(window,L"BUTTON",L"",BS_PUSHBUTTON,kLogin);
         if(!label||!ctx->codex||!ctx->claude||!note||!login)return -1;
         MoveWindow(label,20,20,330,24,TRUE);MoveWindow(ctx->codex,20,54,150,26,TRUE);
-        MoveWindow(ctx->claude,20,86,150,26,TRUE);MoveWindow(login,20,123,170,30,TRUE);MoveWindow(note,20,166,340,40,TRUE);
+        MoveWindow(ctx->claude,20,86,150,26,TRUE);MoveWindow(login,20,123,220,30,TRUE);MoveWindow(note,20,166,340,65,TRUE);
         SelectProvider(ctx,ctx->claudeSelected);return 0;
     }
     if(msg==WM_COMMAND && ctx && LOWORD(w)==kLogin){
-        wchar_t dll[32768]{};DWORD size=GetModuleFileNameW(moduleHandle,dll,32768);
-        if(size && size<32768){std::wstring file(dll);size_t slash=file.find_last_of(L"\\/");
-            if(slash!=std::wstring::npos){file.resize(slash);file+=L"\\Login Claude.cmd";
-                if(reinterpret_cast<INT_PTR>(ShellExecuteW(window,L"open",file.c_str(),nullptr,nullptr,SW_SHOWNORMAL))>32)return 0;}}
-        MessageBoxW(window,Tr(ctx,L"Не удалось открыть вход. Запустите Login Claude.cmd из папки программы.",L"Could not start sign-in. Run Login Claude.cmd from the program folder."),L"Claude",MB_OK|MB_ICONERROR);return 0;
+        if(ctx->claudeSelected){
+            if(reinterpret_cast<INT_PTR>(ShellExecuteW(window,L"open",L"https://platform.claude.com/settings/keys",nullptr,nullptr,SW_SHOWNORMAL))<=32)
+                MessageBoxW(window,Tr(ctx,L"Не удалось открыть браузер.",L"Could not open the browser."),L"Claude",MB_OK|MB_ICONERROR);
+        }else if(!SendBridge(ctx->bridge,"login",{}))MessageBoxW(window,Tr(ctx,L"Нет связи с Codex.",L"Codex is disconnected."),L"Codex",MB_OK|MB_ICONERROR);
+        return 0;
     }
     if(msg==WM_COMMAND && ctx && (LOWORD(w)==kCodex || LOWORD(w)==kClaude)){
         bool chosen=LOWORD(w)==kClaude;
@@ -297,7 +301,7 @@ void OpenSettings(Context* ctx,HWND owner){
     if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
     RECT r{};GetWindowRect(owner,&r);
     CreateWindowExW(WS_EX_DLGMODALFRAME,wc.lpszClassName,Tr(ctx,L"Настройки AI",L"AI Settings"),WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,
-        r.left+40,r.top+40,400,270,owner,nullptr,moduleHandle,ctx);
+        r.left+40,r.top+40,400,280,owner,nullptr,moduleHandle,ctx);
 }
 
 bool CopyToolbar(Context* ctx,HWND window) {
@@ -505,7 +509,12 @@ void DrawChatItem(Context* ctx,const DRAWITEMSTRUCT* item){
 void OnBridge(Context* ctx,const BridgeEvent& e){
     if(e.source!=ctx->bridge)return;
     auto value=[&](size_t n)->std::wstring{return n<e.fields.size()?e.fields[n]:L"";};
-    if(e.kind=="status")SetWindowTextW(ctx->status,value(0).c_str());
+    if(e.kind=="login_url"){
+        const std::wstring url=value(0);
+        if(reinterpret_cast<INT_PTR>(ShellExecuteW(ctx->window,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)
+            MessageBoxW(ctx->window,Tr(ctx,L"Не удалось открыть браузер для входа.",L"Could not open the browser for sign-in."),L"Codex",MB_OK|MB_ICONERROR);
+    }
+    else if(e.kind=="status")SetWindowTextW(ctx->status,value(0).c_str());
     else if(e.kind=="mcp")SetWindowTextW(ctx->mcp,value(0).c_str());
     else if(e.kind=="error"){Append(ctx,L"\r\n"+std::wstring(Tr(ctx,L"[Ошибка] ",L"[Error] "))+value(0)+L"\r\n",RGB(155,46,46));SetWindowTextW(ctx->status,Tr(ctx,L"Ошибка",L"Error"));}
     else if(e.kind=="ready"){ctx->ready=value(0)==L"1";UpdateControls(ctx);}

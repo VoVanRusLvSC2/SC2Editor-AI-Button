@@ -1,8 +1,7 @@
 @echo off
 setlocal
-set "CLAUDE_BIN=%~dp0bridge\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe"
-if not exist "%CLAUDE_BIN%" (echo First run "Setup Claude.cmd".& pause & exit /b 1)
-"%CLAUDE_BIN%" auth login
-if errorlevel 1 (echo Claude sign-in did not complete.& pause & exit /b 1)
-echo Sign-in complete. Switch away from Claude and back in AI settings to reconnect.
+start "" "https://platform.claude.com/settings/keys"
+echo Sign in to Claude Console and create an API key.
+echo Set ANTHROPIC_API_KEY as a user environment variable, then restart the Editor.
+echo API usage is billed separately. Never paste the key into chat.
 pause

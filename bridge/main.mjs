@@ -26,7 +26,7 @@ function mapPrompt(text){
   return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. Файлы рабочей папки можно редактировать напрямую по запросу пользователя. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
 }
 const claudeDirs=new Map();
-let codex, claude, aborter, nextApproval = 1, questionRequest = null; const approvals = new Map();
+let codex, claude, aborter, nextApproval = 1, questionRequest = null, loginId = null; const approvals = new Map();
 function findCodex(){
   if(process.env.SC2_AI_CODEX_PATH && existsSync(process.env.SC2_AI_CODEX_PATH))return process.env.SC2_AI_CODEX_PATH;
   const root=path.join(process.env.LOCALAPPDATA || '', 'OpenAI','Codex','bin');
@@ -48,6 +48,14 @@ class AppServer{
   onLine(line){let m;try{m=JSON.parse(line)}catch{return;}
     if(m.id!==undefined && !m.method){const p=this.pending.get(m.id);if(!p)return;this.pending.delete(m.id);m.error?p.reject(Error(m.error.message || tr('Ошибка Codex','Codex error'))):p.resolve(m.result);return;}
     if(m.id!==undefined && m.method){this.serverRequest(m);return;}
+    if(m.method==='account/login/completed' && loginId && m.params?.loginId===loginId){
+      loginId=null;
+      if(provider==='codex'){
+        if(m.params.success)codexConnect(generation).catch(e=>emit('error',e.message));
+        else emit('error',tr('Вход в Codex не завершён.','Codex sign-in did not complete.'));
+      }
+      return;
+    }
     if(provider!=='codex')return;
     const p=m.params || {};if(p.threadId && p.threadId!==selected)return;
     if(m.method==='item/agentMessage/delta')emit('delta',p.delta||'');
@@ -171,13 +179,9 @@ function sc2Config(){
 }
 async function claudeConnect(gen){
   try{claude=await import(process.env.SC2_AI_CLAUDE_MODULE?pathToFileURL(process.env.SC2_AI_CLAUDE_MODULE).href:'@anthropic-ai/claude-agent-sdk');}catch{throw Error(tr('Claude Agent SDK не установлен. Выполните npm ci в папке bridge.','Claude Agent SDK is not installed. Run npm ci in the bridge folder.'));}
-  let loggedIn=!!process.env.ANTHROPIC_API_KEY;
-  if(!loggedIn && process.platform==='win32')try{
-    const bin=path.join(path.dirname(fileURLToPath(import.meta.url)),'node_modules','@anthropic-ai','claude-agent-sdk-win32-x64','claude.exe');
-    const result=JSON.parse(execFileSync(bin,['auth','status','--json'],{encoding:'utf8',windowsHide:true,timeout:12000,stdio:['ignore','pipe','ignore']}));loggedIn=!!result.loggedIn;
-  }catch(e){try{loggedIn=!!JSON.parse(e.stdout||'{}').loggedIn}catch{}}
+  const loggedIn=!!process.env.ANTHROPIC_API_KEY;
   if(gen!==generation || provider!=='claude')return;
-  emit('status',loggedIn?tr('Claude авторизован','Claude signed in'):tr('Claude: нужен вход','Claude: sign-in required'));
+  emit('status',loggedIn?tr('Claude: API настроен','Claude API configured'):tr('Claude: нужен API-ключ','Claude: API key required'));
   emit('models_begin');for(const [id,name] of [['',tr('По умолчанию','Default')],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
   mcpStatus=sc2Config()?tr('SC2 MCP настроен для Claude','SC2 MCP configured for Claude'):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
@@ -186,6 +190,7 @@ async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,
   for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
 async function sendClaude(text,images){
+  if(!process.env.ANTHROPIC_API_KEY)throw Error(tr('Для Claude в этом приложении нужен ANTHROPIC_API_KEY из Claude Console. Вход по подписке Claude здесь не поддерживается.','Claude in this application requires ANTHROPIC_API_KEY from Claude Console. Claude subscription sign-in is not supported here.'));
   const current=selected;aborter=new AbortController();emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');running={provider:'claude'};
   let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||(mapContext.path?path.dirname(mapContext.path):cwd),abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
     ...(current?{resume:current}:{}),...(model?{model}:{}),...(sc2Config()?{mcpServers:sc2Config()}:{}),
@@ -203,6 +208,16 @@ async function sendClaude(text,images){
 async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status',tr('Подключение...','Connecting...'));emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
 async function handle(line){const [cmd,...args]=line.split('\t');const a=args.map(un64);
   if(cmd==='provider'){if(running)throw Error(tr('Остановите текущий ответ перед переключением.','Stop the current response before switching.'));await connect(a[0]==='claude'?'claude':'codex');}
+  else if(cmd==='login'){
+    if(provider!=='codex'||!codex?.ready)throw Error(tr('Сначала подключите Codex.','Connect Codex first.'));
+    if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));
+    if(loginId){const previous=loginId;loginId=null;await codex.request('account/login/cancel',{loginId:previous});}
+    const result=await codex.request('account/login/start',{type:'chatgpt'});
+    let url;try{url=new URL(result.authUrl);}catch{throw Error(tr('Codex вернул неверную ссылку входа.','Codex returned an invalid sign-in URL.'));}
+    if(url.protocol!=='https:'||!['auth.openai.com','chatgpt.com'].includes(url.hostname)||url.username||url.password)throw Error(tr('Codex вернул неподдерживаемый адрес входа.','Codex returned an unsupported sign-in address.'));
+    if(!result.loginId)throw Error(tr('Не удалось начать вход в Codex.','Could not start Codex sign-in.'));
+    loginId=result.loginId;emit('login_url',url.href);emit('status',tr('Завершите вход в браузере','Finish sign-in in your browser'));
+  }
   else if(cmd==='map'){mapContext={path:a[0]||'',dirty:a[1]==='1',caption:a[2]||'',windowId:a[3]||'',processId:a[4]||'',inferred:a[5]==='1'};showContext();}
   else if(cmd==='refresh'){if(provider==='codex')await listCodex();else await listClaude();}
   else if(cmd==='open'){if(running)throw Error(tr('Остановите ответ перед выбором чата.','Stop the response before selecting a chat.'));selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
