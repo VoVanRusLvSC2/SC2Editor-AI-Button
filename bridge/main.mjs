@@ -102,18 +102,18 @@ async function listCodex(gen=generation){
   // The desktop app stores legacy project names and assignments separately from
   // app-server threads. Read them only for display; never modify desktop state.
   let state={};try{state=JSON.parse(readFileSync(path.join(process.env.CODEX_HOME||path.join(process.env.USERPROFILE||'','.codex'),'.codex-global-state.json'),'utf8'));}catch{}
-  const projects=state['local-projects']||{},assignments=state['thread-project-assignments']||{},projectless=new Set(state['projectless-thread-ids']||[]);
+  const projects=state['local-projects']||{},appearances=state['project-appearances']||{},assignments=state['thread-project-assignments']||{},projectless=new Set(state['projectless-thread-ids']||[]);
   const migrated=Object.values(state['app-server-project-id-by-legacy-project-id-by-host']||{}).reduce((all,entry)=>Object.assign(all,entry),{});
   const findProject=t=>{
     let id=t.projectId||assignments[t.id]?.projectId;
     if(t.projectId && !projects[id])id=Object.keys(migrated).find(key=>migrated[key]===t.projectId)||id;
     if(projectless.has(t.id) && !t.projectId)return null;
     if(!id && t.cwd){const dir=path.resolve(t.cwd).toLowerCase();id=Object.keys(projects).find(key=>(projects[key].rootPaths||[]).some(root=>{const r=path.resolve(root).toLowerCase();return dir===r||dir.startsWith(r+path.sep);}));}
-    return projects[id]?{id,name:projects[id].name||id}:null;
+    return projects[id]?{id,name:projects[id].name||id,color:appearances[id]?.color||appearances[t.projectId]?.color||''}:null;
   };
   emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){const project=findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'');count++;}cursor=r.nextCursor;
+    for(const t of r.data||[]){const project=findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}

@@ -27,7 +27,7 @@ try {
     if ($LASTEXITCODE) { throw 'Image clipboard test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\image_ui_test.cpp') /Fe:image_ui_test.exe user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'Image UI test build failed.' }
-    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\group_ui_test.cpp') /Fe:group_ui_test.exe user32.lib comctl32.lib
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\group_ui_test.cpp') /Fe:group_ui_test.exe user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'Group UI test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\inspect_toolbar.cpp') /Fe:inspect_toolbar.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Inspector build failed.' }

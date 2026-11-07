@@ -5,7 +5,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v15"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v16"))ai=h;return TRUE;}
 int wmain(){
     wchar_t name[80]{};swprintf_s(name,L"SC2AIMultiTest-%lu",GetCurrentProcessId());
     HWINSTA station=CreateWindowStationW(name,0,WINSTA_ALL_ACCESS,nullptr);if(!station||!SetProcessWindowStation(station))return 1;
@@ -18,9 +18,13 @@ int wmain(){
     HMODULE dll=LoadLibraryW(L"SC2AIButton.dll");if(!dll)return 6;auto attach=reinterpret_cast<Attach>(GetProcAddress(dll,"SC2AI_Attach"));if(!attach||!attach(bar,1,500))return 7;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai)return 8;
     auto event=[&](const char* kind,std::vector<std::wstring> fields={}){auto e=new BridgeEvent{nullptr,kind,fields};SendMessageW(ai,WM_AI_BRIDGE,0,reinterpret_cast<LPARAM>(e));};
-    event("threads_begin");event("thread",{L"one",L"First",L"",L"p1",L"Project One"});event("thread",{L"two",L"Second",L"",L"p2",L"Project Two"});event("thread",{L"three",L"Third",L"",L"p1",L"Project One"});event("threads_end");
+    event("threads_begin");event("thread",{L"one",L"First",L"",L"p1",L"Project One",L"purple"});event("thread",{L"two",L"Second",L"",L"p2",L"Project Two"});event("thread",{L"three",L"Third",L"",L"p1",L"Project One",L"purple"});event("threads_end");
     HWND list=GetDlgItem(ai,113);if(SendMessageW(list,LB_GETCOUNT,0,0)!=6)return 9;
     wchar_t text[128]{};SendMessageW(list,LB_GETTEXT,1,reinterpret_cast<LPARAM>(text));if(!wcsstr(text,L"Project One"))return 10;
+    HDC screen=GetDC(owner);HDC dc=CreateCompatibleDC(screen);HBITMAP bitmap=CreateCompatibleBitmap(screen,220,22);auto old=SelectObject(dc,bitmap);
+    DRAWITEMSTRUCT item{};item.CtlID=113;item.hwndItem=list;item.itemID=1;item.hDC=dc;item.rcItem={0,0,220,22};
+    SendMessageW(ai,WM_DRAWITEM,113,reinterpret_cast<LPARAM>(&item));COLORREF folder=GetPixel(dc,25,11);
+    SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(owner,screen);if(folder!=RGB(146,79,247))return 14;
     event("selected",{L"three"});if(SendMessageW(list,LB_GETCURSEL,0,0)!=3)return 11;
     SendMessageW(list,LB_SETCURSEL,1,0);SendMessageW(ai,WM_COMMAND,MAKEWPARAM(113,LBN_SELCHANGE),reinterpret_cast<LPARAM>(list));
     if(SendMessageW(list,LB_GETCOUNT,0,0)!=4)return 12;
