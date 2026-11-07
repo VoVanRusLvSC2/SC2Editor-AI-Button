@@ -22,7 +22,7 @@ function mapPrompt(text){
   const map=mapContext.path
     ? `Документ этого окна SC2 Editor: ${JSON.stringify(mapContext.path)}. ${mapContext.inferred?'Путь восстановлен по сокращённому заголовку и истории редактора; проверь привязку к окну через MCP. ':''}${mapContext.dirty?'В редакторе есть несохранённые изменения; сохранённый файл может отличаться.':'Это путь к сохранённому файлу; наличие несохранённых изменений необходимо проверять в редакторе.'}`
     : `Точный путь открытой карты не определён (заголовок: ${JSON.stringify(mapContext.caption)}). Не выбирай другую карту по догадке; попроси точный путь.`;
-  return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
+  return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. Файлы рабочей папки можно редактировать напрямую по запросу пользователя. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
 }
 const claudeDirs=new Map();
 let codex, claude, aborter, nextApproval = 1, questionRequest = null; const approvals = new Map();
@@ -99,9 +99,21 @@ async function codexConnect(gen){
   await listCodex(gen);if(gen===generation && provider==='codex')emit('ready','1');
 }
 async function listCodex(gen=generation){
+  // The desktop app stores legacy project names and assignments separately from
+  // app-server threads. Read them only for display; never modify desktop state.
+  let state={};try{state=JSON.parse(readFileSync(path.join(process.env.CODEX_HOME||path.join(process.env.USERPROFILE||'','.codex'),'.codex-global-state.json'),'utf8'));}catch{}
+  const projects=state['local-projects']||{},assignments=state['thread-project-assignments']||{},projectless=new Set(state['projectless-thread-ids']||[]);
+  const migrated=Object.values(state['app-server-project-id-by-legacy-project-id-by-host']||{}).reduce((all,entry)=>Object.assign(all,entry),{});
+  const findProject=t=>{
+    let id=t.projectId||assignments[t.id]?.projectId;
+    if(t.projectId && !projects[id])id=Object.keys(migrated).find(key=>migrated[key]===t.projectId)||id;
+    if(projectless.has(t.id) && !t.projectId)return null;
+    if(!id && t.cwd){const dir=path.resolve(t.cwd).toLowerCase();id=Object.keys(projects).find(key=>(projects[key].rootPaths||[]).some(root=>{const r=path.resolve(root).toLowerCase();return dir===r||dir.startsWith(r+path.sep);}));}
+    return projects[id]?{id,name:projects[id].name||id}:null;
+  };
   emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'');count++;}cursor=r.nextCursor;
+    for(const t of r.data||[]){const project=findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'');count++;}cursor=r.nextCursor;
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
@@ -136,11 +148,11 @@ function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
-  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true,sandbox:'read-only'}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
-  else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,approvalPolicy:'on-request',approvalsReviewer:'user'});
+  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
+  else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
-  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
   if(!codexPath)return undefined;
@@ -168,7 +180,7 @@ async function claudeConnect(gen){
   emit('models_begin');for(const [id,name] of [['',tr('По умолчанию','Default')],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
   mcpStatus=sc2Config()?tr('SC2 MCP настроен для Claude','SC2 MCP configured for Claude'):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
-async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'');}emit('threads_end');}
+async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'',s.cwd||'',s.cwd?path.basename(s.cwd):'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
   for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
