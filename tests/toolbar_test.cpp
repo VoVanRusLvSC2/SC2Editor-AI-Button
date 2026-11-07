@@ -9,7 +9,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v10") && !GetWindow(h,GW_OWNER)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v11") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -39,6 +39,8 @@ int wmain() {
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
     HWND aiBar=GetDlgItem(aiWindow,100);
+    RECT chatRect{}, transcriptRect{};GetWindowRect(GetDlgItem(aiWindow,113),&chatRect);GetWindowRect(GetDlgItem(aiWindow,105),&transcriptRect);
+    if(chatRect.left>=transcriptRect.left || GetDlgItem(aiWindow,114) || GetDlgItem(aiWindow,115) || GetDlgItem(aiWindow,116))return 24;
     SendMessageW(aiWindow,WM_ACTIVATE,WA_ACTIVE,0);
     if(!IsWindow(aiWindow) || GetWindow(aiWindow,GW_OWNER) || !IsWindowVisible(aiWindow) || !aiBar ||
        !(GetWindowLongPtrW(aiWindow,GWL_STYLE)&WS_OVERLAPPEDWINDOW) ||
@@ -57,7 +59,7 @@ int wmain() {
     if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 20;
 
     SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
-    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v10",nullptr);
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v11",nullptr);
     if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102) || !GetDlgItem(settings,118))return 16;
     SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
     wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);

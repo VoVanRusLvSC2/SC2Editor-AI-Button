@@ -11,6 +11,17 @@ const un64 = s => Buffer.from(s || '', 'base64').toString('utf8');
 const emit = (kind, ...values) => process.stdout.write([kind, ...values.map(b64)].join('\t') + '\n');
 const cwd = process.argv[2] && existsSync(process.argv[2]) ? process.argv[2] : process.cwd();
 let provider = 'codex', model = '', selected = '', running = null, generation = 0;
+let mapContext={path:'',dirty:false,caption:'',windowId:'',processId:'',inferred:false},mcpStatus='SC2 MCP: проверка...';
+function showContext(){
+  const name=mapContext.path?path.basename(mapContext.path):'';
+  emit('mcp',mcpStatus+' · '+(name?`карта: ${name}${mapContext.inferred?' (по истории редактора)':''}${mapContext.dirty?' (есть несохранённые изменения)':''}`:'карта не определена'));
+}
+function mapPrompt(text){
+  const map=mapContext.path
+    ? `Документ этого окна SC2 Editor: ${JSON.stringify(mapContext.path)}. ${mapContext.inferred?'Путь восстановлен по сокращённому заголовку и истории редактора; проверь привязку к окну через MCP. ':''}${mapContext.dirty?'В редакторе есть несохранённые изменения; сохранённый файл может отличаться.':'Это путь к сохранённому файлу; наличие несохранённых изменений необходимо проверять в редакторе.'}`
+    : `Точный путь открытой карты не определён (заголовок: ${JSON.stringify(mapContext.caption)}). Не выбирай другую карту по догадке; попроси точный путь.`;
+  return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
+}
 const claudeDirs=new Map();
 let codex, claude, aborter, nextApproval = 1, questionRequest = null; const approvals = new Map();
 function findCodex(){
@@ -82,7 +93,7 @@ async function codexConnect(gen){
   if(gen!==generation || provider!=='codex')return;
   emit('status',account.account?'Codex подключён':'Войдите в Codex');
   emit('models_begin');for(const m of models.data||[])emit('model',m.model||m.id,m.displayName||m.model||m.id,m.isDefault?'1':'0');emit('models_end');
-  const server=(mcp.data||[]).find(x=>x.name==='sc2editor');emit('mcp',server?(server.toolsError?'SC2 MCP: ошибка подключения':(Object.keys(server.tools||{}).length?'SC2 MCP подключён · карта не проверена':'SC2 MCP настроен · карта не проверена')):'SC2 MCP не найден в настройках Codex');
+  const server=(mcp.data||[]).find(x=>x.name==='sc2editor');mcpStatus=server?(server.toolsError?'SC2 MCP: ошибка подключения':(Object.keys(server.tools||{}).length?'SC2 MCP подключён':'SC2 MCP настроен')):'SC2 MCP не найден в настройках Codex';showContext();
   await listCodex(gen);if(gen===generation && provider==='codex')emit('ready','1');
 }
 async function listCodex(gen=generation){
@@ -105,10 +116,11 @@ async function openCodex(id,gen){
 }
 async function sendCodex(text){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
-  if(!selected){const r=await codex.request('thread/start',{cwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true,sandbox:'read-only'}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
+  const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
+  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true,sandbox:'read-only'}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line','Вы: '+text);emit('line','AI: ');emit('busy','1');
-  const r=await codex.request('turn/start',{threadId:selected,input:[{type:'text',text,text_elements:[]}],model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input:[{type:'text',text:mapPrompt(text),text_elements:[]}],model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
   if(!codexPath)return undefined;
@@ -134,7 +146,7 @@ async function claudeConnect(gen){
   if(gen!==generation || provider!=='claude')return;
   emit('status',loggedIn?'Claude авторизован':'Claude: нужен вход');
   emit('models_begin');for(const [id,name] of [['','По умолчанию'],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
-  emit('mcp',sc2Config()?'SC2 MCP настроен для Claude · карта не проверена':'SC2 MCP не найден в настройках Codex');await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
+  mcpStatus=sc2Config()?'SC2 MCP настроен для Claude':'SC2 MCP не найден в настройках Codex';showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
 async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||'Без названия','');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
@@ -142,10 +154,10 @@ async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,
   let history=lines.join('\r\n\r\n');if(history.length>200000)history='[Показана последняя часть истории]\r\n'+history.slice(-200000);emit('history',history);}
 async function sendClaude(text){
   const current=selected;aborter=new AbortController();emit('line','Вы: '+text);emit('line','AI: ');emit('busy','1');running={provider:'claude'};
-  let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||cwd,abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
+  let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||(mapContext.path?path.dirname(mapContext.path):cwd),abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
     ...(current?{resume:current}:{}),...(model?{model}:{}),...(sc2Config()?{mcpServers:sc2Config()}:{}),
     canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:'Отклонено пользователем'}));emit('approval',id,`Запрос Claude: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
-  try{for await(const message of claude.query({prompt:text,options})){
+  try{for await(const message of claude.query({prompt:mapPrompt(text),options})){
     if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;emit('selected',selected);}
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
@@ -155,6 +167,7 @@ async function sendClaude(text){
 async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status','Подключение...');emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
 async function handle(line){const [cmd,...args]=line.split('\t');const a=args.map(un64);
   if(cmd==='provider'){if(running)throw Error('Остановите текущий ответ перед переключением.');await connect(a[0]==='claude'?'claude':'codex');}
+  else if(cmd==='map'){mapContext={path:a[0]||'',dirty:a[1]==='1',caption:a[2]||'',windowId:a[3]||'',processId:a[4]||'',inferred:a[5]==='1'};showContext();}
   else if(cmd==='refresh'){if(provider==='codex')await listCodex();else await listClaude();}
   else if(cmd==='open'){if(running)throw Error('Остановите ответ перед выбором чата.');selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
   else if(cmd==='new'){if(running)throw Error('Остановите текущий ответ.');selected='';generation++;emit('clear');emit('selected','');}

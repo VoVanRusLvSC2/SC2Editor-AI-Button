@@ -1,4 +1,5 @@
 import {createInterface} from 'node:readline';
+import path from 'node:path';
 const reply=(id,result)=>process.stdout.write(JSON.stringify({id,result})+'\n');
 const event=(method,params)=>process.stdout.write(JSON.stringify({method,params})+'\n');
 let pendingApproval=false;
@@ -16,7 +17,7 @@ createInterface({input:process.stdin}).on('line',line=>{
     case 'thread/turns/list':reply(m.id,{data:[{items:[{type:'userMessage',content:[{text:'вопрос'}]},{type:'agentMessage',text:'история'}]}]});break;
     case 'thread/resume':reply(m.id,{thread:{id:'test-1'}});break;
     case 'thread/start':reply(m.id,{thread:{id:'test-1'}});break;
-    case 'turn/start':reply(m.id,{turn:{id:'turn-1'}});pendingApproval=true;setTimeout(()=>{if(pendingApproval)process.stdout.write(JSON.stringify({id:901,method:'item/tool/requestUserInput',params:{threadId:'test-1',questions:[{id:'q1',question:'Выбор?',options:[]}]}})+'\n')},10);break;
+    case 'turn/start':{const expected=m.params.input[0].text.includes('другая карта')?process.env.SC2_TEST_MAP2:process.env.SC2_TEST_MAP;if(m.params.cwd!==path.dirname(expected) || !m.params.input[0].text.includes(JSON.stringify(expected)) || !m.params.input[0].text.includes('windowId="123"'))process.exit(9);reply(m.id,{turn:{id:'turn-1'}});pendingApproval=true;setTimeout(()=>{if(pendingApproval)process.stdout.write(JSON.stringify({id:901,method:'item/tool/requestUserInput',params:{threadId:'test-1',questions:[{id:'q1',question:'Выбор?',options:[]}]}})+'\n')},10);break;}
     case 'turn/interrupt':reply(m.id,{});break;
     default:reply(m.id,{});
   }
