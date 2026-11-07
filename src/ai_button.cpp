@@ -389,6 +389,12 @@ bool AddImage(Context* ctx,const std::wstring& path,HBITMAP bitmap){
 void ImageError(Context* ctx){MessageBoxW(ctx->window,Tr(ctx,L"Не удалось добавить изображение. Используйте PNG, JPEG, GIF или BMP размером до 7 МБ после преобразования.",L"Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion."),Tr(ctx,L"Изображение",L"Image"),MB_OK|MB_ICONERROR);}
 LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR raw){
     auto ctx=reinterpret_cast<Context*>(raw);
+    if(msg==WM_CHAR && w==L'\r' && !(GetKeyState(VK_SHIFT)&0x8000)){
+        // The button also stops a running response. Enter must never stop it.
+        if(ctx && ctx->ready && (!ctx->busy || ctx->awaitingAnswer) && IsWindowEnabled(ctx->send) && !(l & (static_cast<LPARAM>(1)<<30)))
+            SendMessageW(ctx->window,WM_COMMAND,MAKEWPARAM(kSend,BN_CLICKED),reinterpret_cast<LPARAM>(ctx->send));
+        return 0;
+    }
     if(msg==WM_PASTE && ctx && !ctx->busy && (IsClipboardFormatAvailable(CF_BITMAP) || IsClipboardFormatAvailable(CF_HDROP))){
         if(!IsClipboardFormatAvailable(CF_BITMAP) && IsClipboardFormatAvailable(CF_HDROP)){
             std::vector<std::wstring> files;if(!ClipboardImageFiles(ctx->window,files)){ImageError(ctx);return 0;}

@@ -9,6 +9,8 @@ An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It a
 3. Select Codex in AI settings and press “Sign in to Codex”. Complete sign-in with your ChatGPT account in the browser. An existing Codex desktop account is reused when available.
 4. For Claude, run `Setup Claude.cmd`, sign in to Claude Console from AI settings, create an API key and set the Windows user environment variable `ANTHROPIC_API_KEY`. Restart the Editor. API usage is billed separately; Claude.ai subscription credentials cannot be used by this third-party Agent SDK application. Never send the key in chat.
 
+Press **Enter** to send a message, or **Shift+Enter** to insert a new line.
+
 Game installation and user paths are discovered locally, and module windows are identified independently of their caption language. The executable version and toolbar layout are checked to avoid attaching to unsupported builds. Native tests have run on Windows 11 x64; automated builds also run on Windows Server 2022 and 2025. This does not establish compatibility with every Windows version, UI scale, or Editor language. Chats require compatible Node.js and Codex or Claude installations.
 
 The DLL is loaded into the running Editor without modifying the game installation. If several Editors are open, run `SC2AILoader.exe --pid <id>`. AI is a separate extension window, not a registered native Editor module.

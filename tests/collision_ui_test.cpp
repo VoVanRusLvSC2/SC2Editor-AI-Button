@@ -23,15 +23,19 @@ int wmain(int argc,wchar_t** argv){
     if(!SendMessageW(bar,TB_ADDBUTTONSW,2,reinterpret_cast<LPARAM>(buttons)))return 7;
     HMODULE dll=LoadLibraryW(argv[1]);if(!dll)return 8;auto attach=reinterpret_cast<Attach>(GetProcAddress(dll,"SC2AI_Attach"));if(!attach||!attach(bar,1,500))return 9;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai||!Wait(Ready,ai,30000))return 10;
-    HWND list=GetDlgItem(ai,113),input=GetDlgItem(ai,107),send=GetDlgItem(ai,108);SendMessageW(list,LB_SETCURSEL,2,0);SendMessageW(ai,WM_COMMAND,MAKEWPARAM(113,LBN_SELCHANGE),reinterpret_cast<LPARAM>(list));
+    HWND list=GetDlgItem(ai,113),input=GetDlgItem(ai,107);SendMessageW(list,LB_SETCURSEL,2,0);SendMessageW(ai,WM_COMMAND,MAKEWPARAM(113,LBN_SELCHANGE),reinterpret_cast<LPARAM>(list));
     for(int i=0;i<100;++i)Pump();if(!IsWindowEnabled(input))return 11;
     HDC dc=GetDC(owner);HBITMAP bitmap=CreateCompatibleBitmap(dc,4,4);ReleaseDC(owner,dc);if(!bitmap||!OpenClipboard(ai))return 12;
     if(!EmptyClipboard()||!SetClipboardData(CF_BITMAP,bitmap))return 13;CloseClipboard();SendMessageW(input,WM_PASTE,0,0);
     if(!SendMessageW(GetDlgItem(ai,130),STM_GETIMAGE,IMAGE_BITMAP,0))return 14;
-    SetWindowTextW(input,L"Keep this draft");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(108,BN_CLICKED),reinterpret_cast<LPARAM>(send));
+    BYTE keys[256]{};if(!GetKeyboardState(keys))return 18;BYTE oldShift=keys[VK_SHIFT];keys[VK_SHIFT]|=0x80;if(!SetKeyboardState(keys))return 19;
+    SetWindowTextW(input,L"First");SendMessageW(input,EM_SETSEL,5,5);SendMessageW(input,WM_CHAR,L'\r',1);
+    wchar_t multiline[128]{};GetWindowTextW(input,multiline,128);if(!wcschr(multiline,L'\n'))return 20;
+    keys[VK_SHIFT]=oldShift;if(!SetKeyboardState(keys))return 21;
+    SetWindowTextW(input,L"Keep this draft");SendMessageW(input,WM_CHAR,L'\r',1);
     if(!Wait(ErrorShown,ai,30000))return 15;wchar_t text[128]{};GetWindowTextW(input,text,128);
     if(lstrcmpW(text,L"Keep this draft")||!SendMessageW(GetDlgItem(ai,130),STM_GETIMAGE,IMAGE_BITMAP,0))return 16;
-    SendMessageW(ai,WM_COMMAND,MAKEWPARAM(108,BN_CLICKED),reinterpret_cast<LPARAM>(send));if(!Wait(Cleared,ai,30000))return 17;
+    SendMessageW(input,WM_CHAR,L'\r',1);SendMessageW(input,WM_CHAR,L'\r',1);if(!Wait(Cleared,ai,30000))return 17;
     for(int i=0;i<50;++i)Pump();DestroyWindow(ai);DestroyWindow(owner);CloseDesktop(desktop);CloseWindowStation(station);
-    std::puts("PASS: writer conflict preserves text and image; successful retry clears them");return 0;
+    std::puts("PASS: Enter sends, Shift+Enter adds a line, and writer conflict preserves the draft");return 0;
 }
