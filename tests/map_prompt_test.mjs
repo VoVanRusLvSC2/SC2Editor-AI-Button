@@ -19,6 +19,9 @@ test('dirty-map connectivity tests do not route through save/checkpoint import',
  assert.ok(result.includes('matching Data window from the same process/document'));
  assert.ok(result.includes('saving will not expose missing tools'));
  assert.ok(result.includes('live.connect is ONLY the separately selected saved-checkpoint workflow'));
+ assert.ok(result.includes('Never create, export or open another map/checkpoint/Save As copy unless the user explicitly requests a copy'));
+ assert.ok(result.includes('live.document.save'));
+ assert.ok(result.includes('do not silently substitute checkpoint authoring'));
  assert.ok(result.endsWith('[Сообщение пользователя]\ntest'));
 });
 

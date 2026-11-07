@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import {pathToFileURL, fileURLToPath} from 'node:url';
+import {createMcpFreshener} from './mcp_refresh.mjs';
 
 // A private stdio channel connects this process only to the editor extension.
 // Data fields are base64-encoded UTF-8; stdout never contains debug output.
@@ -24,7 +25,7 @@ function mapPrompt(text){
   const map=mapContext.path
     ? `Document in this SC2 Editor window: ${JSON.stringify(mapContext.path)}. ${mapContext.inferred?'The path was inferred from an abbreviated title and Editor history; verify the window identity through MCP. ':''}${mapContext.dirty?'The Editor contains unsaved changes; the saved file may differ.':'This identifies the saved file; inspect the Editor for unsaved changes.'}`
     : `The exact open-map path is unresolved (title: ${JSON.stringify(mapContext.caption)}). Do not guess another map. Read-only connectivity inspection does not require a map path; resolve the explicit path before any edit.`;
-  return `[Контекст SC2 Editor]\n${map}\nEditor identity: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Work on this map by default. The MCP workspace may point elsewhere; do not treat it as the current map. Author map content through MCP. For a connectivity-only test, discover/enable live.windows and live.capabilities or live.memory.capabilities through modkit.tools/modkit.enable_tools in focused profiles, then inspect them read-only. If those discovery helpers are absent, use the tools already exposed by the profile; a missing discovery helper does not establish that live APIs are absent. Do not ask the user to save or call live.connect merely to test connectivity; an unsaved document is not a connection failure. For requested direct-memory Unit scalar edits, discover live.memory.read/set and select the matching Data window from the same process/document, even if this panel belongs to Terrain. These tools accept unsaved document values and do not require live.connect. They currently support existing map-local Unit numeric fields only, not live Terrain, triggers or object creation. If live.memory.* is absent, report the unavailable/stale MCP connection or profile and reconnect it to the updated server; saving will not expose missing tools. live.connect is ONLY the separately selected saved-checkpoint workflow, which imports a private copy and requires a saved file. Use the explicit map path and exact window/process identity; do not infer unsupported capabilities or silently replace either workflow. Preserve unsaved work, user dialogs and uncertain results. Do not claim a memory edit was applied until native value readback confirms it. A title/history path match alone is not authoritative in-memory document binding.\n\n[Сообщение пользователя]\n${text}`;
+  return `[Контекст SC2 Editor]\n${map}\nEditor identity: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Work on this map by default. Default editing workflow: change this current open document, then use live.document.status and live.document.save for a requested same-file save, and summarize the applied changes. Never create, export or open another map/checkpoint/Save As copy unless the user explicitly requests a copy. If a requested in-memory operation (including object placement) is unsupported, report that gap and do not silently substitute checkpoint authoring. A missing save or placement tool may be an old connection: inspect live.capabilities.apiVersion and refresh/reconnect before concluding. Native save includes all current unsaved user edits. The MCP workspace may point elsewhere; do not treat it as the current map. Author map content through MCP. For a connectivity-only test, discover/enable live.windows and live.capabilities or live.memory.capabilities through modkit.tools/modkit.enable_tools in focused profiles, then inspect them read-only. If those discovery helpers are absent, use the tools already exposed by the profile; a missing discovery helper does not establish that live APIs are absent. Do not ask the user to save or call live.connect merely to test connectivity; an unsaved document is not a connection failure. For requested direct-memory Unit scalar edits, discover live.memory.read/set and select the matching Data window from the same process/document, even if this panel belongs to Terrain. These tools accept unsaved document values and do not require live.connect. They currently support existing map-local Unit numeric fields only, not live Terrain, triggers or object creation. If live.memory.* is absent, report the unavailable/stale MCP connection or profile and reconnect it to the updated server; saving will not expose missing tools. live.connect is ONLY the separately selected saved-checkpoint workflow, which imports a private copy and requires a saved file. Use the explicit map path and exact window/process identity; do not infer unsupported capabilities or silently replace either workflow. Preserve unsaved work, user dialogs and uncertain results. Do not claim a memory edit was applied until native value readback confirms it. A title/history path match alone is not authoritative in-memory document binding.\n\n[Сообщение пользователя]\n${text}`;
 }
 const claudeDirs=new Map();
 // Membership belongs to this extension and must not modify Codex desktop state
@@ -52,6 +53,7 @@ class AppServer{
     this.proc.on('error',e=>this.failed(tr('Не удалось запустить Codex: ','Could not start Codex: ')+e.message));
     this.proc.on('exit',()=>this.failed(tr('Codex app-server завершил работу.','Codex app-server exited.')));
   }
+  refreshMcp=createMcpFreshener((method,params)=>this.request(method,params),sc2RuntimeFingerprint);
   failed(message){if(this.closed)return;this.ready=false;sectionPromise=null;for(const p of this.pending.values())p.reject(Error(message));this.pending.clear();if(provider==='codex')emit('error',message);}
   send(msg){if(!this.proc.stdin.destroyed)this.proc.stdin.write(JSON.stringify(msg)+'\n');}
   request(method,params={}){return new Promise((resolve,reject)=>{const id=this.id++;this.pending.set(id,{resolve,reject});this.send({id,method,params});setTimeout(()=>{if(this.pending.delete(id))reject(Error(tr('Нет ответа от Codex: ','No response from Codex: ')+method));},30000).unref();});}
@@ -184,6 +186,7 @@ function loadAttachedImages(paths){
 function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n['+tr('Изображение','Image')+(count>1?' × '+count:'')+']':'');}
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
+  if(await codex.refreshMcp())emit('event',tr('Запрошено обновление MCP перед ответом; возможности проверяются инструментами','MCP refresh queued before the turn; inspect tools for actual capabilities'));
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
   let createdHere=false;
   if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;if(process.env.SC2_AI_TEST_EPHEMERAL!=='1'){markEditorChat('codex',selected);createdHere=true;}emit('selected',selected);await listCodex();}
@@ -191,6 +194,22 @@ async function sendCodex(text,images){
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
   const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});emit('accepted');if(createdHere)syncEditorSection(selected);if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+}
+let sc2RuntimeFiles;
+function sc2RuntimeFingerprint(){
+  if(!sc2RuntimeFiles){
+    let config=sc2Config()?.sc2editor;
+    if(config?.env?.SC2_AI_MCP_SPEC){try{config=JSON.parse(Buffer.from(config.env.SC2_AI_MCP_SPEC,'base64').toString('utf8'));}catch{return null;}}
+    const entry=config?.args?.find(arg=>typeof arg==='string'&&path.isAbsolute(arg)&&arg.endsWith('.js')&&existsSync(arg));
+    if(!entry)return null;
+    const base=path.dirname(entry);
+    sc2RuntimeFiles=[entry,path.join(base,'app/moduleSelection.js'),
+      ...['tools','workspace','document','memory','memoryTools','memoryDesktop','desktop','editorLease'].map(name=>path.join(base,'modules/live',name+'.js')),
+      ...['sc2-mcp-live.exe','sc2-mcp-live-memory.json'].map(name=>path.resolve(base,'../native/bin/windows-x64',name))];
+  }
+  const hash=createHash('sha256');
+  for(const file of sc2RuntimeFiles){hash.update(file);try{hash.update(readFileSync(file));}catch{hash.update('missing');}}
+  return hash.digest('hex');
 }
 function sc2Config(){
   if(!codexPath)return undefined;

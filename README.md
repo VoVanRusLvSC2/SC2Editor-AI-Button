@@ -36,3 +36,19 @@ See [the implementation notes](docs/chat-integration-plan.ru.md). The Editor ver
 ## Author and use
 
 The author is [VoVanRusLvSC2](https://github.com/VoVanRusLvSC2). You may use, copy, modify, and distribute the project, subject to retaining the notice and crediting the author in public mentions or publications. Contact the author on GitHub with questions. See [LICENSE](LICENSE) for the full terms.
+### Current-document edits and MCP updates
+
+Map prompts default to the currently open document, followed by a requested
+native same-file save and an actual change summary. Checkpoint/Save As copies
+require explicit user selection; unsupported live operations must not silently
+fall back to another map. Current MCP live editing supports existing Unit numeric
+fields and native document Save. Direct placement/Terrain/trigger editing is not
+implemented by this policy.
+
+Before a Codex turn, the bridge fingerprints the configured local server entry
+and live module files. A changed fingerprint queues MCP configuration refresh on
+this panel's own app-server, before starting/resuming the turn. It never kills
+Editor, game or other chats' servers. A refresh acknowledgement is not capability
+verification: inspect `live.capabilities.apiVersion` and actual tools.
+After replacing an already running bridge script, reopen the AI panel once; its
+Node process cannot retroactively load changed source. Editor may remain open.
