@@ -1,6 +1,12 @@
 export async function listSessions(){return [{sessionId:'claude-1',summary:'Claude test'}]}
 export async function getSessionMessages(){return [{type:'user',message:{content:'прошлый вопрос'}},{type:'assistant',message:{content:[{type:'text',text:'прошлый ответ'}]}}]}
 export async function* query({prompt,options}){
+  if(typeof prompt!=='string'){
+    let message;for await(const item of prompt)message=item;
+    const image=message?.message?.content?.find(x=>x.type==='image');
+    if(!image || image.source?.media_type!=='image/png' || !image.source.data.startsWith('iVBORw0KGgo'))throw Error('Missing Claude image content');
+    prompt=message.message.content.find(x=>x.type==='text')?.text||'';
+  }else throw Error('Image must be passed as a structured Claude input');
   if(!prompt.includes(JSON.stringify(process.env.SC2_TEST_MAP2)) || !prompt.includes('windowId="123"'))throw Error('Missing active map context');
   yield {type:'system',subtype:'init',session_id:'claude-1'};
   const result=await options.canUseTool('testTool',{target:'test'});

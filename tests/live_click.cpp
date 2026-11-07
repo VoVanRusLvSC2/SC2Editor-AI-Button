@@ -17,8 +17,9 @@ static BOOL CALLBACK Find(HWND h, LPARAM) {
     DWORD pid=0; GetWindowThreadProcessId(h,&pid);
     if (pid!=targetPid) return TRUE;
     wchar_t cls[128]{},title[1024]{}; GetClassNameW(h,cls,128); GetWindowTextW(h,title,1024);
-    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v12")) aiWindow=h;
+    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v13")) aiWindow=h;
     if (legacyOpen==4 && !lstrcmpW(cls,L"SC2AIButton.Window.v4")) aiWindow=h;
+    if (legacyOpen==12 && !lstrcmpW(cls,L"SC2AIButton.Window.v12")) aiWindow=h;
     if (legacyOpen==11 && !lstrcmpW(cls,L"SC2AIButton.Window.v11")) aiWindow=h;
     if (legacyOpen==10 && !lstrcmpW(cls,L"SC2AIButton.Window.v10")) aiWindow=h;
     if (legacyOpen==9 && !lstrcmpW(cls,L"SC2AIButton.Window.v9")) aiWindow=h;
@@ -68,7 +69,7 @@ int wmain(int argc,wchar_t**argv) {
     if (argc<4 || argc>6) return 1;
     targetPid=wcstoul(argv[2],nullptr,10);
     if (argc>=5) requestedTitle=argv[4];
-    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open")?1:(!lstrcmpW(argv[5],L"legacy-v2-open")?2:(!lstrcmpW(argv[5],L"legacy-v3-open")?3:(!lstrcmpW(argv[5],L"legacy-v4-open")?4:(!lstrcmpW(argv[5],L"legacy-v5-open")?5:(!lstrcmpW(argv[5],L"legacy-v6-open")?6:(!lstrcmpW(argv[5],L"legacy-v7-open")?7:(!lstrcmpW(argv[5],L"legacy-v8-open")?8:(!lstrcmpW(argv[5],L"legacy-v9-open")?9:(!lstrcmpW(argv[5],L"legacy-v10-open")?10:(!lstrcmpW(argv[5],L"legacy-v11-open")?11:0))))))))));
+    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open")?1:(!lstrcmpW(argv[5],L"legacy-v2-open")?2:(!lstrcmpW(argv[5],L"legacy-v3-open")?3:(!lstrcmpW(argv[5],L"legacy-v4-open")?4:(!lstrcmpW(argv[5],L"legacy-v5-open")?5:(!lstrcmpW(argv[5],L"legacy-v6-open")?6:(!lstrcmpW(argv[5],L"legacy-v7-open")?7:(!lstrcmpW(argv[5],L"legacy-v8-open")?8:(!lstrcmpW(argv[5],L"legacy-v9-open")?9:(!lstrcmpW(argv[5],L"legacy-v10-open")?10:(!lstrcmpW(argv[5],L"legacy-v11-open")?11:(!lstrcmpW(argv[5],L"legacy-v12-open")?12:0)))))))))));
     HDESK desk=OpenDesktopW(argv[1],0,FALSE,DESKTOP_ENUMERATE|DESKTOP_READOBJECTS);
     if (!desk || !SetThreadDesktop(desk)) { std::printf("desktop error %lu\n",GetLastError());return 2; }
     EnumDesktopWindows(desk,Find,0);
@@ -90,7 +91,7 @@ int wmain(int argc,wchar_t**argv) {
         !SendMessageTimeoutW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result)) return 6;
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
     if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) ||
-        (legacyOpen==3 ? GetParent(aiWindow)!=editor : (legacyOpen && legacyOpen!=7 && legacyOpen!=8 && legacyOpen!=9 && legacyOpen!=10 && legacyOpen!=11 ? GetWindow(aiWindow,GW_OWNER)!=editor : GetWindow(aiWindow,GW_OWNER)!=nullptr))) { std::puts("AI window not opened with the expected state");return 7; }
+        (legacyOpen==3 ? GetParent(aiWindow)!=editor : (legacyOpen && legacyOpen!=7 && legacyOpen!=8 && legacyOpen!=9 && legacyOpen!=10 && legacyOpen!=11 && legacyOpen!=12 ? GetWindow(aiWindow,GW_OWNER)!=editor : GetWindow(aiWindow,GW_OWNER)!=nullptr))) { std::puts("AI window not opened with the expected state");return 7; }
     if (legacyOpen) { std::puts("PASS: legacy AI window open for upgrade test");return 0; }
     HWND aiBar=GetDlgItem(aiWindow,100);
     if(!aiBar || !(SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED) ||

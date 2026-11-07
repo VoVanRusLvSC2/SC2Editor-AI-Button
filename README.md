@@ -14,6 +14,8 @@ Chats appear on the left; choose “＋ Новый чат” in the list to star
 
 The extension detects English and Russian from the Editor menu; other languages fall back to English. User messages and assistant responses are not translated. The conversation distinguishes roles and tool activity with color, and long command entries are shortened in the display.
 
+Attach one image to a message by pasting into the input with Ctrl+V or using the Image button. A thumbnail and removal button appear before sending. PNG, JPEG, GIF and BMP are converted to PNG, with a 7 MiB limit after conversion. Sent images are retained as copies in the `SC2EditorAI` temporary folder for conversation history; an unsent attachment is removed when discarded or the window closes.
+
 The assistant receives the open map path and Editor window identity with each message. Abbreviated titles are matched against recent Editor documents and marked as inferred; ambiguous paths are left unresolved. The configured `sc2editor` MCP server is also passed to Claude. Actual map collaboration requires its `live.*` tools and a saved map: MCP uses a separate working copy and opens a checkpoint rather than directly editing the in-memory map. The map name shown in the UI does not by itself confirm an MCP connection. Approval requests are presented; some complex MCP elicitation forms are not yet supported and are declined. Long histories are truncated for display.
 
 See [the implementation notes](docs/chat-integration-plan.ru.md). The Editor version, UI layouts, and scaling settings are not exhaustively tested.

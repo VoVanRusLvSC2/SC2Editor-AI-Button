@@ -7,9 +7,9 @@ using Detach=BOOL (WINAPI*)(HWND,UINT);
 struct Module { HMODULE h;Attach attach;Detach detach; };
 static HWND oldPanel,newPanel;
 static BOOL CALLBACK Child(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v3"))oldPanel=h;return TRUE;}
-static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v12") && !GetWindow(h,GW_OWNER))newPanel=h;return TRUE;}
+static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v13") && !GetWindow(h,GW_OWNER))newPanel=h;return TRUE;}
 int wmain(int argc,wchar_t**argv) {
-    if(argc!=12)return 1;
+    if(argc!=13)return 1;
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,600,300,nullptr,nullptr,nullptr,nullptr);
     HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|TBSTYLE_FLAT,0,0,500,30,owner,nullptr,nullptr,nullptr);
@@ -19,8 +19,8 @@ int wmain(int argc,wchar_t**argv) {
     SendMessageW(bar,TB_SETIMAGELIST,0,reinterpret_cast<LPARAM>(images));
     TBBUTTON buttons[2]{};for(int i=0;i<2;++i){buttons[i].iBitmap=I_IMAGENONE;buttons[i].idCommand=100+i;buttons[i].fsState=TBSTATE_ENABLED;}
     if(!SendMessageW(bar,TB_ADDBUTTONSW,2,reinterpret_cast<LPARAM>(buttons)))return 5;
-    Module modules[12]{};wchar_t currentPath[32768]{};if(!GetFullPathNameW(L"SC2AIButton.dll",32768,currentPath,nullptr))return 6;
-    for(int i=0;i<12;++i){modules[i].h=LoadLibraryW(i<11?argv[i+1]:currentPath);if(!modules[i].h)return 7;
+    Module modules[13]{};wchar_t currentPath[32768]{};if(!GetFullPathNameW(L"SC2AIButton.dll",32768,currentPath,nullptr))return 6;
+    for(int i=0;i<13;++i){modules[i].h=LoadLibraryW(i<12?argv[i+1]:currentPath);if(!modules[i].h)return 7;
         modules[i].attach=reinterpret_cast<Attach>(GetProcAddress(modules[i].h,"SC2AI_Attach"));
         modules[i].detach=reinterpret_cast<Detach>(GetProcAddress(modules[i].h,"SC2AI_Detach"));
         if(!modules[i].attach||!modules[i].detach||!modules[i].attach(bar,1,500))return 8;
@@ -31,8 +31,8 @@ int wmain(int argc,wchar_t**argv) {
     SendMessageW(newPanel,WM_CLOSE,0,0);newPanel=nullptr;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Top,reinterpret_cast<LPARAM>(owner));
     if(!IsWindow(newPanel)||!IsWindowVisible(newPanel))return 11;
-    for(int i=11;i>=0;--i)if(!modules[i].detach(bar,500))return 12;
+    for(int i=12;i>=0;--i)if(!modules[i].detach(bar,500))return 12;
     if(SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=2)return 13;
     for(auto m:modules)FreeLibrary(m.h);DestroyWindow(owner);ImageList_Destroy(images);
-    std::puts("PASS: v1 through v12 coexist; separate AI window opens and can reopen");return 0;
+    std::puts("PASS: v1 through v13 coexist; separate AI window opens and can reopen");return 0;
 }

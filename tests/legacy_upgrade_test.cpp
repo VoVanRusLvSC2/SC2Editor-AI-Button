@@ -8,8 +8,8 @@ static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM owner) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
     if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2") || !lstrcmpW(cls,L"SC2AIButton.Window.v4") || !lstrcmpW(cls,L"SC2AIButton.Window.v5") || !lstrcmpW(cls,L"SC2AIButton.Window.v6")) { if(GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner))oldWindow=h; }
-    if ((!lstrcmpW(cls,L"SC2AIButton.Window.v7") || !lstrcmpW(cls,L"SC2AIButton.Window.v8") || !lstrcmpW(cls,L"SC2AIButton.Window.v9") || !lstrcmpW(cls,L"SC2AIButton.Window.v10") || !lstrcmpW(cls,L"SC2AIButton.Window.v11")) && !GetWindow(h,GW_OWNER))oldWindow=h;
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v12")) newWindow=h;
+    if ((!lstrcmpW(cls,L"SC2AIButton.Window.v7") || !lstrcmpW(cls,L"SC2AIButton.Window.v8") || !lstrcmpW(cls,L"SC2AIButton.Window.v9") || !lstrcmpW(cls,L"SC2AIButton.Window.v10") || !lstrcmpW(cls,L"SC2AIButton.Window.v11") || !lstrcmpW(cls,L"SC2AIButton.Window.v12")) && !GetWindow(h,GW_OWNER))oldWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v13")) newWindow=h;
     return TRUE;
 }
 static BOOL CALLBACK FindChild(HWND h,LPARAM) {

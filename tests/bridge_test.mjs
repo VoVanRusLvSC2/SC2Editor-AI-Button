@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import path from 'node:path';
+import os from 'node:os';
+import {mkdtempSync,writeFileSync,unlinkSync,rmdirSync} from 'node:fs';
 const root=process.cwd(),exe=process.execPath,lang=process.argv[2]||'ru';
 const map=path.join(root,'tests','Active.SC2Map'),map2=path.join(root,'build','Other.SC2Map');
-const child=spawn(exe,[path.join(root,'bridge/main.mjs'),root,'codex',lang],{windowsHide:true,stdio:['pipe','pipe','inherit'],env:{...process.env,SC2_TEST_MAP:map,SC2_TEST_MAP2:map2,SC2_AI_CODEX_PATH:exe,SC2_AI_CODEX_EXTRA_ARGS:JSON.stringify([path.join(root,'tests/fake_codex.mjs')]),SC2_AI_CLAUDE_MODULE:path.join(root,'tests/fake_claude.mjs')}});
+const imageDir=mkdtempSync(path.join(os.tmpdir(),'sc2-ai-test-')),imageFile=path.join(imageDir,'image.png');
+writeFileSync(imageFile,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+cQ2sAAAAASUVORK5CYII=','base64'));
+const child=spawn(exe,[path.join(root,'bridge/main.mjs'),root,'codex',lang],{windowsHide:true,stdio:['pipe','pipe','inherit'],env:{...process.env,SC2_TEST_IMAGE:imageFile,SC2_TEST_MAP:map,SC2_TEST_MAP2:map2,SC2_AI_CODEX_PATH:exe,SC2_AI_CODEX_EXTRA_ARGS:JSON.stringify([path.join(root,'tests/fake_codex.mjs')]),SC2_AI_CLAUDE_MODULE:path.join(root,'tests/fake_claude.mjs')}});
 const seen=[],waiters=[];const decode=x=>Buffer.from(x||'','base64').toString('utf8');
 createInterface({input:child.stdout}).on('line',line=>{const [kind,...v]=line.split('\t');const e={kind,fields:v.map(decode)};seen.push(e);for(const w of [...waiters])if(w.pred(e)){waiters.splice(waiters.indexOf(w),1);w.resolve(e)}});
 const wait=(pred,from=0)=>{const found=seen.slice(from).find(pred);if(found)return Promise.resolve(found);return new Promise((resolve,reject)=>{const w={pred,resolve};waiters.push(w);setTimeout(()=>{const i=waiters.indexOf(w);if(i>=0){waiters.splice(i,1);reject(Error('Timed out waiting for event'))}},8000).unref()})};
@@ -14,9 +18,9 @@ try{
  send('map',map,'1','Active.SC2Map','123','456');await wait(e=>e.kind==='mcp'&&e.fields[0].includes('Active.SC2Map'));
  let from=seen.length;send('open','test-1');await wait(e=>e.kind==='selected'&&e.fields[0]==='test-1',from);const history=seen.slice(from).find(e=>e.kind==='history')?.fields[0]||'';assert(history.includes(lang==='ru'?'Вы: вопрос':'You: вопрос')&&history.includes('история'));assert(!history.includes('INTERNAL MAP CONTEXT')&&!history.includes('x'.repeat(200)));assert(history.includes(lang==='ru'?'Команда — выполнено':'Command — completed'));
  from=seen.length;send('send','привет');await wait(e=>e.kind==='question',from);send('answer','вариант');let a=await wait(e=>e.kind==='approval',from);send('approve',a.fields[0],'no');await wait(e=>e.kind==='busy'&&e.fields[0]==='0',from);assert(seen.slice(from).some(e=>e.kind==='delta'&&e.fields[0]==='ответ'));
- from=seen.length;send('map',map2,'0','Other.SC2Map','123','456');await wait(e=>e.kind==='mcp'&&e.fields[0].includes('Other.SC2Map'),from);send('send','другая карта');await wait(e=>e.kind==='question',from);send('answer','вариант');a=await wait(e=>e.kind==='approval',from);send('approve',a.fields[0],'no');await wait(e=>e.kind==='busy'&&e.fields[0]==='0',from);
+ from=seen.length;send('map',map2,'0','Other.SC2Map','123','456');await wait(e=>e.kind==='mcp'&&e.fields[0].includes('Other.SC2Map'),from);send('send','другая карта',imageFile);await wait(e=>e.kind==='question',from);send('answer','вариант');a=await wait(e=>e.kind==='approval',from);send('approve',a.fields[0],'no');await wait(e=>e.kind==='busy'&&e.fields[0]==='0',from);assert(seen.slice(from).some(e=>e.kind==='line'&&e.fields[0].includes(lang==='ru'?'Изображение':'Image')));
  from=seen.length;send('provider','claude');await wait(e=>e.kind==='ready'&&e.fields[0]==='1',from);assert(seen.slice(from).some(e=>e.kind==='thread'&&e.fields[0]==='claude-1'));
  from=seen.length;send('open','claude-1');await wait(e=>e.kind==='selected'&&e.fields[0]==='claude-1',from);assert(seen.slice(from).some(e=>e.kind==='history'&&e.fields[0].includes('прошлый ответ')));
- from=seen.length;send('send','привет Claude');a=await wait(e=>e.kind==='approval',from);send('approve',a.fields[0],'no');await wait(e=>e.kind==='busy'&&e.fields[0]==='0',from);assert(seen.slice(from).some(e=>e.kind==='delta'&&e.fields[0]==='ответ Claude'));
- console.log('PASS: Codex and Claude sessions, history, streamed replies, user questions, MCP status, and explicit approval denial');
-}finally{child.stdin.end();}
+ from=seen.length;send('send','привет Claude',imageFile);a=await wait(e=>e.kind==='approval',from);send('approve',a.fields[0],'no');await wait(e=>e.kind==='busy'&&e.fields[0]==='0',from);assert(seen.slice(from).some(e=>e.kind==='delta'&&e.fields[0]==='ответ Claude'));
+ console.log('PASS: Codex and Claude image inputs, sessions, history, streaming, MCP and approval denial');
+}finally{child.stdin.end();unlinkSync(imageFile);rmdirSync(imageDir);}

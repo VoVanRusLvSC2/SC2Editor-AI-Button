@@ -1,6 +1,6 @@
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
-import {existsSync, readdirSync, statSync} from 'node:fs';
+import {existsSync, readdirSync, statSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 
@@ -106,7 +106,7 @@ async function listCodex(gen=generation){
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
 function unwrapUserMessage(raw){const marker='[Сообщение пользователя]\n';return raw.startsWith('[Контекст SC2 Editor]\n')&&raw.includes(marker)?raw.slice(raw.indexOf(marker)+marker.length):raw;}
-function userMessage(item){return unwrapUserMessage((item.content||[]).map(c=>c.text||'').join(''));}
+function userMessage(item){const content=item.content||[];const text=unwrapUserMessage(content.map(c=>c.text||'').join(''));const images=content.filter(c=>c.type==='localImage'||c.type==='image').length;return text+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':'');}
 function itemText(item){if(item.type==='userMessage')return tr('Вы: ','You: ')+userMessage(item);
   if(item.type==='agentMessage')return 'AI: '+(item.text||'');
   if(item.type==='mcpToolCall')return `[MCP: ${item.server} / ${item.tool} — ${statusText(item.status)}]`;
@@ -119,13 +119,23 @@ async function openCodex(id,gen){
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);
   emit('history',history);if(result.nextCursor)emit('event',tr('Показаны последние 100 сообщений диалога.','Showing the last 100 messages.'));
 }
-async function sendCodex(text){
+function readAttachedImage(file){
+  if(!file)return null;
+  if(!path.isAbsolute(file))throw Error(tr('Некорректный путь изображения.','Invalid image path.'));
+  const stat=statSync(file);if(!stat.isFile() || stat.size>7*1024*1024 || stat.size<8)throw Error(tr('Изображение недоступно или слишком большое.','The image is unavailable or too large.'));
+  const bytes=readFileSync(file);if(!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error(tr('Некорректный формат изображения.','Invalid image format.'));
+  return bytes;
+}
+function displayUserText(text,image){return tr('Вы: ','You: ')+text+(image?'\n['+tr('Изображение','Image')+']':'');}
+async function sendCodex(text,image){
+  if(image)readAttachedImage(image);
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
   if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true,sandbox:'read-only'}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,approvalPolicy:'on-request',approvalsReviewer:'user'});
-  emit('line',tr('Вы: ','You: ')+text);emit('line','AI: ');emit('busy','1');
-  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input:[{type:'text',text:mapPrompt(text),text_elements:[]}],model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+  emit('line',displayUserText(text,image));emit('line','AI: ');emit('busy','1');
+  const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённое изображение.','Describe the attached image.')),text_elements:[]}];if(image)input.push({type:'localImage',path:image});
+  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
   if(!codexPath)return undefined;
@@ -155,14 +165,17 @@ async function claudeConnect(gen){
 }
 async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
-  for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');if(text)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text));}
+  for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
-async function sendClaude(text){
-  const current=selected;aborter=new AbortController();emit('line',tr('Вы: ','You: ')+text);emit('line','AI: ');emit('busy','1');running={provider:'claude'};
+async function sendClaude(text,image){
+  const bytes=image?readAttachedImage(image):null;
+  const current=selected;aborter=new AbortController();emit('line',displayUserText(text,image));emit('line','AI: ');emit('busy','1');running={provider:'claude'};
   let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||(mapContext.path?path.dirname(mapContext.path):cwd),abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
     ...(current?{resume:current}:{}),...(model?{model}:{}),...(sc2Config()?{mcpServers:sc2Config()}:{}),
     canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:tr('Отклонено пользователем','Declined by user')}));emit('approval',id,`${tr('Запрос Claude','Claude request')}: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
-  try{for await(const message of claude.query({prompt:mapPrompt(text),options})){
+  const content=mapPrompt(text||tr('Опиши прикреплённое изображение.','Describe the attached image.'));
+  async function* imagePrompt(){yield {type:'user',message:{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/png',data:bytes.toString('base64')}},{type:'text',text:content}]},parent_tool_use_id:null};}
+  try{for await(const message of claude.query({prompt:bytes?imagePrompt():content,options})){
     if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;emit('selected',selected);}
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
@@ -178,7 +191,7 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
   else if(cmd==='new'){if(running)throw Error(tr('Остановите текущий ответ.','Stop the current response first.'));selected='';generation++;emit('clear');emit('selected','');}
   else if(cmd==='model')model=a[0];
   else if(cmd==='answer' && questionRequest){const q=questionRequest.questions[questionRequest.index++];questionRequest.answers[q.id]={answers:[a[0]||'']};askNext();}
-  else if(cmd==='send'){if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));if(!a[0]?.trim())return;provider==='codex'?await sendCodex(a[0]):await sendClaude(a[0]);}
+  else if(cmd==='send'){if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));if(!a[0]?.trim()&&!a[1])return;provider==='codex'?await sendCodex(a[0]||'',a[1]||''):await sendClaude(a[0]||'',a[1]||'');}
   else if(cmd==='stop'){if(questionRequest){codex.send({id:questionRequest.requestId,error:{code:-32800,message:'Input cancelled by user.'}});questionRequest=null;}if(running?.provider==='codex'){if(running.turnId)await codex.request('turn/interrupt',{threadId:running.threadId,turnId:running.turnId});else running.stopRequested=true;}else aborter?.abort();}
   else if(cmd==='approve'){const f=approvals.get(a[0]);if(f){approvals.delete(a[0]);f(a[1]==='yes');}}
 }

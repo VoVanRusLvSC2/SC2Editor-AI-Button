@@ -13,7 +13,7 @@ $output = Join-Path $PSScriptRoot 'build'
 New-Item -ItemType Directory -Force $output | Out-Null
 Push-Location $output
 try {
-    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') (Join-Path $PSScriptRoot 'src\bridge_client.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib gdi32.lib crypt32.lib shell32.lib advapi32.lib
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') (Join-Path $PSScriptRoot 'src\bridge_client.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib gdi32.lib gdiplus.lib crypt32.lib shell32.lib advapi32.lib comdlg32.lib
     if ($LASTEXITCODE) { throw 'DLL build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE (Join-Path $PSScriptRoot 'src\loader.cpp') /Fe:SC2AILoader.exe user32.lib version.lib
     if ($LASTEXITCODE) { throw 'Loader build failed.' }
@@ -21,6 +21,10 @@ try {
     if ($LASTEXITCODE) { throw 'Test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\map_context_test.cpp') /Fe:map_context_test.exe user32.lib advapi32.lib
     if ($LASTEXITCODE) { throw 'Map context test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\image_attachment_test.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:image_attachment_test.exe user32.lib gdi32.lib gdiplus.lib shell32.lib
+    if ($LASTEXITCODE) { throw 'Image attachment test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\image_clipboard_test.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:image_clipboard_test.exe user32.lib gdi32.lib gdiplus.lib shell32.lib
+    if ($LASTEXITCODE) { throw 'Image clipboard test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\inspect_toolbar.cpp') /Fe:inspect_toolbar.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Inspector build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\live_click.cpp') /Fe:live_click.exe user32.lib comctl32.lib gdi32.lib
@@ -43,4 +47,6 @@ try {
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
     & .\map_context_test.exe
     if ($LASTEXITCODE) { throw 'Map context test failed.' }
+    & .\image_attachment_test.exe
+    if ($LASTEXITCODE) { throw 'Image attachment test failed.' }
 } finally { Pop-Location }
