@@ -12,7 +12,7 @@ static LRESULT CALLBACK OwnerProc(HWND h,UINT msg,WPARAM w,LPARAM l){
     if(msg==WM_COMMAND && reinterpret_cast<HWND>(l)==sourceToolbar && LOWORD(w)!=500){forwarded=LOWORD(w);return 0;}
     return DefWindowProcW(h,msg,w,l);
 }
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v24"))ai=h;return TRUE;}
 int wmain(){
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 1;
     WNDCLASSW cls{};cls.lpfnWndProc=OwnerProc;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"SC2AI.FileToolbarTest";if(!RegisterClassW(&cls))return 2;
@@ -25,6 +25,7 @@ int wmain(){
     for(int i=0;i<18;++i){items[i].iBitmap=I_IMAGENONE;items[i].idCommand=700+i;items[i].fsState=TBSTATE_ENABLED;items[i].iString=first+3;}
     items[0].iString=first;items[1].iString=first+1;items[2].iString=first+2;
     items[2].fsState=0; // Native Open starts disabled.
+    items[7].fsStyle=BTNS_SEP;items[7].iBitmap=8;
     if(!SendMessageW(sourceToolbar,TB_ADDBUTTONSW,18,reinterpret_cast<LPARAM>(items)))return 6;
     HMODULE dll=LoadLibraryW(L"SC2AIButton.dll");if(!dll)return 7;
     auto attach=reinterpret_cast<Attach>(GetProcAddress(dll,"SC2AI_Attach"));auto detach=reinterpret_cast<Detach>(GetProcAddress(dll,"SC2AI_Detach"));

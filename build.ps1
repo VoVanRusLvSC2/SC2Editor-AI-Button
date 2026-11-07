@@ -21,6 +21,8 @@ try {
     if ($LASTEXITCODE) { throw 'Test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\file_toolbar_test.cpp') /Fe:file_toolbar_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'File toolbar test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\overview_toolbar_test.cpp') /Fe:overview_toolbar_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Overview toolbar test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\editor_window_test.cpp') /Fe:editor_window_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Editor window test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\map_context_test.cpp') /Fe:map_context_test.exe user32.lib advapi32.lib
