@@ -8,7 +8,7 @@
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v30"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v31"))ai=h;return TRUE;}
 int wmain(){
     if(EditorLocaleFromVariables("\xEF\xBB\xBFlocaleiddata=zhTW\r\n")!=L"zhTW" ||
        EditorLocaleFromVariables("localeiddata=esMX\n")!=L"esMX" ||
