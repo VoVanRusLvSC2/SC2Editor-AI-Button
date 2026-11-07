@@ -1,6 +1,6 @@
 # SC2 Editor AI Button
 
-An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It adds an AI toolbar button and opens a separate window with a chat, model selector, chat list, and settings for Codex or Claude.
+An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It adds an AI toolbar button and opens a separate window with a chat, model selector, chat list, and settings for Codex or Claude. The AI button is selected only while the AI window is active and clicking it does not toggle the selection.
 
 ## Setup
 
@@ -10,7 +10,7 @@ An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It a
 
 The DLL is loaded into the running Editor without modifying the game installation. If several Editors are open, run `SC2AILoader.exe --pid <id>`. AI is a separate extension window, not a registered native Editor module.
 
-Codex lists locally available app-server threads; remote or cloud threads may not be accessible. Claude lists local Claude Code sessions, which are distinct from Claude's website chats. The configured Codex MCP server `sc2editor` is passed to Claude, but the connection indicator does not verify the active map. Review the target before changes. Approval requests are presented; some complex MCP elicitation forms are not yet supported and are declined. Long histories are truncated for display.
+Codex lists locally available app-server threads; remote or cloud threads may not be accessible. Claude lists local Claude Code sessions, which are distinct from Claude's website chats. Claude Code requires an eligible paid plan or separately billed API access; the free Claude plan alone does not include it ([Anthropic help](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-max-or-ultra-plan)). The configured Codex MCP server `sc2editor` is passed to Claude, but the connection indicator does not verify the active map. Review the target before changes. Approval requests are presented; some complex MCP elicitation forms are not yet supported and are declined. Long histories are truncated for display.
 
 See [the implementation notes](docs/chat-integration-plan.ru.md). The Editor version, UI layouts, and scaling settings are not exhaustively tested.
 

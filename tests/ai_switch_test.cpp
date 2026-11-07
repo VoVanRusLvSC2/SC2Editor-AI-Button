@@ -7,7 +7,7 @@ static DWORD pid; static HWND source,ai,aiBar,data;
 static BOOL CALLBACK Find(HWND h,LPARAM){
  DWORD p=0;GetWindowThreadProcessId(h,&p);if(p!=pid)return TRUE;
  wchar_t cls[128]{},title[1024]{};GetClassNameW(h,cls,128);GetWindowTextW(h,title,1024);
- if(!lstrcmpW(cls,L"SC2AIButton.Window.v8")){ai=h;aiBar=GetDlgItem(h,100);}
+ if(!lstrcmpW(cls,L"SC2AIButton.Window.v9")){ai=h;aiBar=GetDlgItem(h,100);}
  if(!lstrcmpW(cls,L"#32770")){
   if(!wcsncmp(title,L"Terrain - ",10))source=GetDlgItem(h,10);
   if(!wcsncmp(title,L"Data - ",7) && IsWindowVisible(h))data=h;
@@ -29,10 +29,15 @@ int wmain(int argc,wchar_t**argv){
  EnumDesktopWindows(desk,Find,0);if(!source||!Click(source,60000))return 3;
  for(int i=0;i<60&&!aiBar;++i){Sleep(100);EnumDesktopWindows(desk,Find,0);}
  if(!aiBar||!(SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED))return 4;
+ if(!Click(aiBar,60000))return 8;
+ Sleep(200);
+ if(!(SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED)){std::puts("Click deselected active AI");return 9;}
  if(!Click(aiBar,30))return 5;
  for(int i=0;i<150&&!data;++i){Sleep(100);EnumDesktopWindows(desk,Find,0);}
  if(!data||!IsWindowVisible(data)){std::puts("Native Data window did not open");return 6;}
  if(GetWindow(ai,GW_OWNER)){std::puts("AI remains owned by another module");return 7;}
- SendMessageW(ai,WM_CLOSE,0,0);std::puts("PASS: AI window selects AI and its Data button opens the native Data module");return 0;
+ for(int i=0;i<30 && (SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED);++i)Sleep(100);
+ if(SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED){std::puts("Inactive AI remained selected");return 10;}
+ SendMessageW(ai,WM_CLOSE,0,0);std::puts("PASS: click keeps AI selected; Data opens and inactive AI is deselected");return 0;
 }
 

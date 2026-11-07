@@ -8,7 +8,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v8") && !GetWindow(h,GW_OWNER)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v9") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -37,13 +37,22 @@ int wmain() {
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
     HWND aiBar=GetDlgItem(aiWindow,100);
+    SendMessageW(aiWindow,WM_ACTIVATE,WA_ACTIVE,0);
     if(!IsWindow(aiWindow) || GetWindow(aiWindow,GW_OWNER) || !IsWindowVisible(aiWindow) || !aiBar ||
        !(GetWindowLongPtrW(aiWindow,GWL_STYLE)&WS_OVERLAPPEDWINDOW) ||
        !(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED) ||
        !IsWindow(GetDlgItem(aiWindow,109)) || !IsWindow(GetDlgItem(aiWindow,110)) ||
        IsWindowEnabled(GetDlgItem(aiWindow,108)))return 6;
+    SendMessageW(aiWindow,WM_ACTIVATE,WA_INACTIVE,0);
+    if(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED)return 18;
+    SendMessageW(aiWindow,WM_ACTIVATE,WA_ACTIVE,0);
+    if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 19;
+    SendMessageW(aiBar,TB_CHECKBUTTON,500,MAKELPARAM(FALSE,0));
+    SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(aiBar));
+    if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 20;
+
     SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
-    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v8",nullptr);
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v9",nullptr);
     if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102) || !GetDlgItem(settings,118))return 16;
     SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
     wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);
@@ -62,6 +71,6 @@ int wmain() {
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 1) return 5;
     FreeLibrary(module);
     DestroyWindow(parent);
-    std::puts("PASS: separate AI window, selected AI, provider selection, close/reopen, removal");
+    std::puts("PASS: AI selection follows active window and cannot be toggled off; provider selection and reopen");
     return 0;
 }
