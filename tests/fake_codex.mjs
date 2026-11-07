@@ -14,7 +14,7 @@ createInterface({input:process.stdin}).on('line',line=>{
     case 'account/login/start':reply(m.id,{type:'chatgpt',loginId:'login-1',authUrl:'https://chatgpt.com/auth/test'});setTimeout(()=>event('account/login/completed',{loginId:'login-1',success:true}),20);break;
     case 'model/list':reply(m.id,{data:[{model:'test-model',displayName:'Test',isDefault:true}]});break;
     case 'mcpServerStatus/list':reply(m.id,{data:[{name:'sc2editor',tools:{one:{}}}]});break;
-    case 'thread/list':reply(m.id,{data:deleted?[]:[{id:'test-1',name:'Тест',projectId:'project-test',status:{type:'idle'},...(sectionMoved?{section:{id:'editor-section',name:'IN_EDITOR'}}:{})}]});break;
+    case 'thread/list':reply(m.id,{data:deleted?[]:[{id:'test-1',name:process.env.SC2_TEST_CONTEXT_TITLE?'[Контекст SC2 Editor] Document in this SC2 Editor window: hidden':'Тест',projectId:'project-test',status:{type:'idle'},...(sectionMoved?{section:{id:'editor-section',name:'IN_EDITOR'}}:{})}]});break;
     case 'threadSection/list':reply(m.id,{data:sectionCreated?[{id:'editor-section',name:'IN_EDITOR'}]:[],nextCursor:null});break;
     case 'threadSection/create':if(m.params.name!=='IN_EDITOR')process.exit(15);sectionCreated=true;reply(m.id,{section:{id:'editor-section',name:'IN_EDITOR'}});break;
     case 'thread/section/move':if(m.params.threadId!=='test-1'||m.params.sectionId!=='editor-section')process.exit(16);sectionMoved=true;reply(m.id,{});break;

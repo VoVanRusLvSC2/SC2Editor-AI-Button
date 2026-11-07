@@ -104,7 +104,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "Dieser Chat wird von einem anderen Codex-Prozess verwendet. Fahren Sie dort fort oder lassen Sie es los und versuchen Sie es erneut. Ihr Text und Ihre Anhänge bleiben erhalten.",
     "[Invalid text]": "[Ungültiger Text]",
     "[Invalid data]": "[Ungültige Daten]",
-    "Response is too long": "Die Antwort ist zu lang"
+    "Response is too long": "Die Antwort ist zu lang",
+    "Actions": "Aktionen",
+    "Copy code": "Code kopieren",
+    "Editor chat": "Editor-Chat"
   },
   "esES": {
     "Disconnected": "desconectado",
@@ -211,7 +214,10 @@
     "Invalid image path.": "Ruta de imagen no válida.",
     "[Invalid text]": "[Texto no válido]",
     "[Invalid data]": "[Datos no válidos]",
-    "Response is too long": "La respuesta es demasiado larga"
+    "Response is too long": "La respuesta es demasiado larga",
+    "Actions": "Acciones",
+    "Copy code": "Copiar código",
+    "Editor chat": "Chat del editor"
   },
   "ptBR": {
     "Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion.": "Não foi possível anexar a imagem. Use PNG, JPEG, GIF ou BMP até 7 MB após a conversão.",
@@ -318,7 +324,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "Este chat está em uso por outro processo Codex. Continue lá ou solte-o e tente novamente. Seu texto e anexos são preservados.",
     "[Invalid text]": "[Texto inválido]",
     "[Invalid data]": "[Dados inválidos]",
-    "Response is too long": "A resposta é muito longa"
+    "Response is too long": "A resposta é muito longa",
+    "Actions": "Ações",
+    "Copy code": "Copiar código",
+    "Editor chat": "Chat do editor"
   },
   "frFR": {
     " (from editor history)": " (extrait de l'historique de l'éditeur)",
@@ -425,7 +434,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "Ce chat est utilisé par un autre processus Codex. Continuez-le là ou relâchez-le et réessayez. Votre texte et vos pièces jointes sont conservés.",
     "[Invalid text]": "[Texte invalide]",
     "[Invalid data]": "[Données invalides]",
-    "Response is too long": "La réponse est trop longue"
+    "Response is too long": "La réponse est trop longue",
+    "Actions": "Actions",
+    "Copy code": "Copier le code",
+    "Editor chat": "Chat de l’éditeur"
   },
   "itIT": {
     "Open Claude Console": "Apri la console Claude",
@@ -532,7 +544,10 @@
     "map": "mappa",
     "[Invalid text]": "[Testo non valido]",
     "[Invalid data]": "[Dati non validi]",
-    "Response is too long": "La risposta è troppo lunga"
+    "Response is too long": "La risposta è troppo lunga",
+    "Actions": "Azioni",
+    "Copy code": "Copia codice",
+    "Editor chat": "Chat dell’editor"
   },
   "koKR": {
     "Open Claude Console": "Claude 콘솔 열기",
@@ -639,7 +654,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "이 채팅은 다른 Codex 프로세스에서 사용 중입니다. 계속 진행하거나 해제한 후 다시 시도하세요. 텍스트와 첨부 파일은 보존됩니다.",
     "[Invalid text]": "[잘못된 텍스트]",
     "[Invalid data]": "[잘못된 데이터]",
-    "Response is too long": "응답이 너무 깁니다."
+    "Response is too long": "응답이 너무 깁니다.",
+    "Actions": "작업",
+    "Copy code": "코드 복사",
+    "Editor chat": "편집기 채팅"
   },
   "plPL": {
     "Open Claude Console": "Otwórz konsolę Claude",
@@ -746,7 +764,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "Ten czat jest używany przez inny proces Codex. Kontynuuj w tym miejscu lub zwolnij i spróbuj ponownie. Twój tekst i załączniki zostaną zachowane.",
     "[Invalid text]": "[Nieprawidłowy tekst]",
     "[Invalid data]": "[Nieprawidłowe dane]",
-    "Response is too long": "Odpowiedź jest za długa"
+    "Response is too long": "Odpowiedź jest za długa",
+    "Actions": "Działania",
+    "Copy code": "Kopiuj kod",
+    "Editor chat": "Czat edytora"
   },
   "zhCN": {
     "Open Claude Console": "打开Claude控制台",
@@ -853,7 +874,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "此聊天正由另一个 Codex 进程使用。继续该操作或释放它并重试。您的文本和附件将被保留。",
     "[Invalid text]": "[无效文字]",
     "[Invalid data]": "[无效数据]",
-    "Response is too long": "回复太长"
+    "Response is too long": "回复太长",
+    "Actions": "操作",
+    "Copy code": "复制代码",
+    "Editor chat": "编辑器聊天"
   },
   "zhTW": {
     " (from editor history)": " （取自編輯歷史）",
@@ -960,7 +984,10 @@
     "This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.": "此聊天正由另一個 Codex 進程使用。繼續該操作或釋放它並重試。您的文字和附件將被保留。",
     "[Invalid text]": "[無效文字]",
     "[Invalid data]": "[無效資料]",
-    "Response is too long": "回覆太長"
+    "Response is too long": "回覆太長",
+    "Actions": "操作",
+    "Copy code": "複製程式碼",
+    "Editor chat": "編輯器聊天"
   },
   "esMX": {
     "Disconnected": "desconectado",
@@ -1067,6 +1094,9 @@
     "Invalid image path.": "Ruta de imagen no válida.",
     "[Invalid text]": "[Texto no válido]",
     "[Invalid data]": "[Datos no válidos]",
-    "Response is too long": "La respuesta es demasiado larga"
+    "Response is too long": "La respuesta es demasiado larga",
+    "Actions": "Acciones",
+    "Copy code": "Copiar código",
+    "Editor chat": "Chat del editor"
   }
 }

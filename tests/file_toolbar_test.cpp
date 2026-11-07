@@ -12,7 +12,7 @@ static LRESULT CALLBACK OwnerProc(HWND h,UINT msg,WPARAM w,LPARAM l){
     if(msg==WM_COMMAND && reinterpret_cast<HWND>(l)==sourceToolbar && LOWORD(w)!=500){forwarded=LOWORD(w);return 0;}
     return DefWindowProcW(h,msg,w,l);
 }
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v27"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v28"))ai=h;return TRUE;}
 int wmain(){
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 1;
     WNDCLASSW cls{};cls.lpfnWndProc=OwnerProc;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"SC2AI.FileToolbarTest";if(!RegisterClassW(&cls))return 2;

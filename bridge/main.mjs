@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 import {createMcpFreshener} from './mcp_refresh.mjs';
+import {chatTitle,compactTitle,firstUserTitle,isContextTitle} from './chat_titles.mjs';
 
 // A private stdio channel connects this process only to the editor extension.
 // Data fields are base64-encoded UTF-8; stdout never contains debug output.
@@ -53,6 +54,7 @@ function forgetEditorChat(kind,id){try{unlinkSync(marker(kind,id));}catch(e){if(
 // closes.
 let codex, claude, aborter, nextApproval = 1, questionRequest = null, loginId = null; const approvals = new Map();
 let sectionPromise=null;const sectionMoves=new Set();
+const editorTitles=new Map(), pendingTitles=new Set(), titleRetryAt=new Map();
 // Try an explicit path, the standard installation and PATH without depending on the author's
 // username.
 function findCodex(){
@@ -179,10 +181,33 @@ async function listCodex(gen=generation){
     if(!id && t.cwd){const dir=path.resolve(t.cwd).toLowerCase();id=Object.keys(projects).find(key=>(projects[key].rootPaths||[]).some(root=>{const r=path.resolve(root).toLowerCase();return dir===r||dir.startsWith(r+path.sep);}));}
     return projects[id]?{id,name:projects[id].name||id,color:appearances[id]?.color||appearances[t.projectId]?.color||''}:null;
   };
-  emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
+  emit('threads_begin');let cursor=null,count=0;const needsTitle=[];do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){const marked=isEditorChat('codex',t.id),inSection=t.section?.name==='IN_EDITOR';if(marked && !t.section)syncEditorSection(t.id);const project=(marked||inSection)?{id:editorGroup,name:'IN_EDITOR',color:'blue'}:findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
+    for(const t of r.data||[]){
+      const marked=isEditorChat('codex',t.id),inSection=t.section?.name==='IN_EDITOR';
+      if(marked && !t.section)syncEditorSection(t.id);
+      const project=(marked||inSection)?{id:editorGroup,name:'IN_EDITOR',color:'blue'}:findProject(t);
+      const hidden=isContextTitle(t.name)||(!t.name && isContextTitle(t.preview));
+      const title=(hidden&&editorTitles.get(t.id))||chatTitle(t.name,t.preview,hidden?tr('Чат редактора','Editor chat'):tr('Без названия','Untitled'));
+      if(hidden && !editorTitles.has(t.id) && !pendingTitles.has(t.id) && Date.now()>=(titleRetryAt.get(t.id)||0))needsTitle.push(t.id);
+      emit('thread',t.id,title,t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;
+    }cursor=r.nextCursor;
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
+  // Resolve hidden-context titles in the background without blocking the chat list.
+  if(needsTitle.length)void resolveEditorTitles(needsTitle,gen);
+}
+async function resolveEditorTitles(ids,gen){
+  const server=codex,queue=ids.slice(0,50);
+  async function worker(){while(queue.length && gen===generation && provider==='codex' && server===codex){
+    const id=queue.shift();if(pendingTitles.has(id))continue;pendingTitles.add(id);
+    try{
+      const result=await server.request('thread/turns/list',{threadId:id,limit:1,itemsView:'full',sortDirection:'asc'});
+      const title=firstUserTitle(result.data);
+      if(title){editorTitles.set(id,title);titleRetryAt.delete(id);if(provider==='codex' && server===codex)emit('thread_title',id,title);}
+      else titleRetryAt.set(id,Date.now()+60000);
+    }catch{titleRetryAt.set(id,Date.now()+60000);}finally{pendingTitles.delete(id);}
+  }}
+  await Promise.all(Array.from({length:Math.min(3,queue.length)},()=>worker()));
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
 // The model receives editor context, but the displayed history shows the original user
@@ -226,7 +251,7 @@ async function sendCodex(text,images){
   if(await codex.refreshMcp())emit('event',tr('Запрошено обновление MCP перед ответом; возможности проверяются инструментами','MCP refresh queued before the turn; inspect tools for actual capabilities'));
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
   let createdHere=false;
-  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;if(process.env.SC2_AI_TEST_EPHEMERAL!=='1'){markEditorChat('codex',selected);createdHere=true;}emit('selected',selected);await listCodex();}
+  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;const title=compactTitle(text);if(title)editorTitles.set(selected,title);if(process.env.SC2_AI_TEST_EPHEMERAL!=='1'){markEditorChat('codex',selected);createdHere=true;}emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
@@ -278,7 +303,7 @@ async function claudeConnect(gen){
 }
 // List local Claude sessions and group them by working directory; mark editor-created sessions
 // as IN_EDITOR.
-async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);const own=isEditorChat('claude',s.sessionId);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'',own?editorGroup:(s.cwd||''),own?'IN_EDITOR':(s.cwd?path.basename(s.cwd):''),own?'blue':'');}emit('threads_end');}
+async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);const own=isEditorChat('claude',s.sessionId);emit('thread',s.sessionId,chatTitle(s.customTitle,s.summary||s.firstPrompt,tr('Чат редактора','Editor chat')),'',own?editorGroup:(s.cwd||''),own?'IN_EDITOR':(s.cwd?path.basename(s.cwd):''),own?'blue':'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
   for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
@@ -327,7 +352,7 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
     try{
       if(deletingProvider==='codex')await codex.request('thread/delete',{threadId:id});
       else {if(typeof claude.deleteSession!=='function')throw Error(tr('Обновите Claude Agent SDK для удаления чатов.','Update Claude Agent SDK to delete chats.'));await claude.deleteSession(id,claudeDirs.get(id)?{dir:claudeDirs.get(id)}:{});claudeDirs.delete(id);}
-      try{forgetEditorChat(deletingProvider,id);}catch{emit('event',tr('Не удалось очистить метку удалённого чата','Could not remove the deleted chat marker'));}
+      editorTitles.delete(id);titleRetryAt.delete(id);try{forgetEditorChat(deletingProvider,id);}catch{emit('event',tr('Не удалось очистить метку удалённого чата','Could not remove the deleted chat marker'));}
       if(gen===generation && provider===deletingProvider && selected===id){selected='';emit('clear');emit('selected','');deletingProvider==='codex'?await listCodex(gen):await listClaude(gen);}
     }finally{running=null;emit('busy','0');}
   }

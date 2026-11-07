@@ -9,7 +9,7 @@ An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It a
 3. Select Codex in AI settings and press “Sign in to Codex”. Complete sign-in with your ChatGPT account in the browser. An existing Codex desktop account is reused when available.
 4. For Claude, run `Setup Claude.cmd`, sign in to Claude Console from AI settings, create an API key and set the Windows user environment variable `ANTHROPIC_API_KEY`. Restart the Editor. API usage is billed separately; Claude.ai subscription credentials cannot be used by this third-party Agent SDK application. Never send the key in chat.
 
-Press **Enter** to send a message, or **Shift+Enter** to insert a new line.
+Press **Enter** to send a message, or **Shift+Enter** to insert a new line. The model selector is below the message field on the left. The transcript renders common Markdown formatting, HTTP(S) links and fenced code blocks with a copy action. Consecutive tool actions are collapsed into a clickable summary; expand it to inspect the details. Chat titles that contain only the internal editor context are displayed using the first user message when available; this does not rename the provider chat.
 
 The AI toolbar exposes the Editor's New, Open, and Save commands, identified by the standard Ctrl+N, Ctrl+O, and Ctrl+S labels on the native toolbar. Their availability follows the native Editor; custom shortcuts or inaccessible labels may prevent discovery.
 

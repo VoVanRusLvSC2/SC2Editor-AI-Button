@@ -35,7 +35,7 @@ try {
     if ($LASTEXITCODE) { throw 'Image UI test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\collision_ui_test.cpp') /Fe:collision_ui_test.exe user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'Collision UI test build failed.' }
-    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\chat_color_test.cpp') /Fe:chat_color_test.exe user32.lib comctl32.lib
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\chat_color_test.cpp') /Fe:chat_color_test.exe user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'Chat color test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\group_ui_test.cpp') /Fe:group_ui_test.exe user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'Group UI test build failed.' }
@@ -61,6 +61,12 @@ try {
     if ($LASTEXITCODE) { throw 'Multi-version upgrade test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\locale_ui_test.cpp') /Fe:locale_ui_test.exe user32.lib comctl32.lib shell32.lib
     if ($LASTEXITCODE) { throw 'Locale UI test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\chat_markdown_test.cpp') /Fe:chat_markdown_test.exe
+    if ($LASTEXITCODE) { throw 'Markdown test build failed.' }
+    & .\chat_markdown_test.exe
+    if ($LASTEXITCODE) { throw 'Markdown test failed.' }
+    & .\chat_color_test.exe
+    if ($LASTEXITCODE) { throw 'Chat display test failed.' }
     & .\locale_ui_test.exe
     if ($LASTEXITCODE) { throw 'Locale UI test failed.' }
     & .\toolbar_test.exe
