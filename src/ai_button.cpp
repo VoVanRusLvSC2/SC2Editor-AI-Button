@@ -6,6 +6,7 @@
 #include <commdlg.h>
 #include <oleacc.h>
 #include <oleauto.h>
+#include <gdiplus.h>
 #include <new>
 #include <cwchar>
 #include <algorithm>
@@ -53,7 +54,8 @@ constexpr wchar_t kLegacyProperty27[] = L"SC2AIButton.context.v27";
 constexpr wchar_t kLegacyProperty28[] = L"SC2AIButton.context.v28";
 constexpr wchar_t kLegacyProperty29[] = L"SC2AIButton.context.v29";
 constexpr wchar_t kLegacyProperty30[] = L"SC2AIButton.context.v30";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v31";
+constexpr wchar_t kLegacyProperty31[] = L"SC2AIButton.context.v31";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v32";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
@@ -84,7 +86,8 @@ constexpr wchar_t kLegacyWindowClass27[] = L"SC2AIButton.Window.v27";
 constexpr wchar_t kLegacyWindowClass28[] = L"SC2AIButton.Window.v28";
 constexpr wchar_t kLegacyWindowClass29[] = L"SC2AIButton.Window.v29";
 constexpr wchar_t kLegacyWindowClass30[] = L"SC2AIButton.Window.v30";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v31";
+constexpr wchar_t kLegacyWindowClass31[] = L"SC2AIButton.Window.v31";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v32";
 constexpr size_t kMaxImages=5;
 constexpr ULONGLONG kMaxImagesBytes=20ull*1024*1024;
 constexpr UINT kCommand = 60000;
@@ -107,18 +110,47 @@ enum class TranscriptLinkKind { Actions, Copy, Web };
 struct TranscriptLink { LONG start,end;TranscriptLinkKind kind;size_t entry;std::wstring value; };
 struct Context {
     HWND toolbar; HWND owner; HWND window; UINT command;
-    int legacy,legacyOriginalIndex; unsigned legacyMask; bool ownsImages; HIMAGELIST images;
+    int legacy,legacyOriginalIndex; unsigned long long legacyMask; bool ownsImages; HIMAGELIST images;
     TBBUTTONINFOW original;
     HWND aiToolbar, codex, claude, heading, status, description, history, input, send;
     HWND settings, model, config, showAll, showEditor, deleteChat; bool claudeSelected, allChats;
     int fileCommands[3];
     HIMAGELIST aiImages;
-    BridgeState* bridge; HWND chatList,mcp; HFONT chatFont;
+    BridgeState* bridge; HWND chatList,mcp; HFONT chatFont,inputFont;
+    ULONG_PTR folderGdiToken; Gdiplus::Bitmap* folderTexture;
     std::vector<std::wstring> modelIds,chatRows,collapsedGroups;std::vector<ChatItem> chats;std::wstring selectedId,locale;bool ready,busy,awaitingAnswer,pendingSend,windowActive,rich;
     HWND tooltip,attach,previews[kMaxImages],removes[kMaxImages];std::vector<ImageAttachment> attachments;
     std::vector<TranscriptEntry> transcript;std::vector<TranscriptLink> transcriptLinks;bool transcriptDirty=false;
 };
 const wchar_t* Tr(Context* ctx,const wchar_t* ru,const wchar_t* en){return TranslateText(ctx->locale.c_str(),ru,en);}
+
+// The game-owned texture is optional and stays on the user's computer, not in the release.
+// The environment override is also useful for testing and portable installations.
+void LoadFolderTexture(Context* ctx){
+    wchar_t path[32768]{};DWORD length=GetEnvironmentVariableW(L"SC2_AI_FOLDER_ICON_PATH",path,32768);
+    if(!length){length=GetEnvironmentVariableW(L"LOCALAPPDATA",path,32768);if(!length || length>=32700)return;
+        if(wcscat_s(path,L"\\SC2Editor-AI-Button\\assets\\folder.png"))return;
+    }else if(length>=32768)return;
+    if(GetFileAttributesW(path)==INVALID_FILE_ATTRIBUTES)return;
+    Gdiplus::GdiplusStartupInput startup;
+    if(Gdiplus::GdiplusStartup(&ctx->folderGdiToken,&startup,nullptr)!=Gdiplus::Ok){ctx->folderGdiToken=0;return;}
+    auto bitmap=Gdiplus::Bitmap::FromFile(path,FALSE);
+    if(!bitmap || bitmap->GetLastStatus()!=Gdiplus::Ok || !bitmap->GetWidth() || !bitmap->GetHeight() || bitmap->GetWidth()>128 || bitmap->GetHeight()>128){
+        delete bitmap;Gdiplus::GdiplusShutdown(ctx->folderGdiToken);ctx->folderGdiToken=0;return;
+    }
+    ctx->folderTexture=bitmap;
+}
+void DrawFolderTexture(Context* ctx,HDC dc,int x,int y,COLORREF color){
+    float r=GetRValue(color)/255.0f,g=GetGValue(color)/255.0f,b=GetBValue(color)/255.0f;
+    if(r+g+b<0.15f)r=g=b=0.25f;
+    // Retain the texture's light/shadow while applying the project's folder color.
+    Gdiplus::ColorMatrix matrix={{{0.48f*r,0.48f*g,0.48f*b,0,0},{0.94f*r,0.94f*g,0.94f*b,0,0},
+        {0.18f*r,0.18f*g,0.18f*b,0,0},{0,0,0,1,0},{0,0,0,0,1}}};
+    Gdiplus::ImageAttributes attributes;attributes.SetColorMatrix(&matrix);
+    Gdiplus::Graphics graphics(dc);graphics.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+    graphics.DrawImage(ctx->folderTexture,Gdiplus::Rect(x,y,16,16),0,0,static_cast<INT>(ctx->folderTexture->GetWidth()),
+        static_cast<INT>(ctx->folderTexture->GetHeight()),Gdiplus::UnitPixel,&attributes);
+}
 // Draw beveled steel-blue lettering at the toolbar's native image dimensions.
 HBITMAP CreateAIIcon(int width,int height) {
     if (width<12 || height<12 || width>256 || height>256) return nullptr;
@@ -389,7 +421,7 @@ LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
 void OpenSettings(Context* ctx,HWND owner){
     if(IsWindow(ctx->settings)){SetForegroundWindow(ctx->settings);return;}
     WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=SettingsProc;wc.hInstance=moduleHandle;
-    wc.lpszClassName=L"SC2AIButton.Settings.v31";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.lpszClassName=L"SC2AIButton.Settings.v32";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
     RECT r{};GetWindowRect(owner,&r);
@@ -753,9 +785,12 @@ void DrawChatItem(Context* ctx,const DRAWITEMSTRUCT* item){
             auto it=std::find_if(ctx->chats.begin(),ctx->chats.end(),[&](const ChatItem& chat){return chat.group==key.substr(1);});
             COLORREF color=it==ctx->chats.end()?GetSysColor(COLOR_WINDOWTEXT):FolderColor(it->color);
             int x=row.left+20,y=(row.top+row.bottom)/2-5;
-            HBRUSH brush=CreateSolidBrush(color);HPEN pen=CreatePen(PS_SOLID,1,color);
-            if(brush && pen){auto oldBrush=SelectObject(dc,brush);auto oldPen=SelectObject(dc,pen);POINT points[]={{x,y+1},{x,y-1},{x+5,y-1},{x+7,y+1},{x+14,y+1},{x+14,y+9},{x,y+9}};Polygon(dc,points,7);SelectObject(dc,oldPen);SelectObject(dc,oldBrush);}
-            if(pen)DeleteObject(pen);if(brush)DeleteObject(brush);
+            if(ctx->folderTexture)DrawFolderTexture(ctx,dc,x-1,(row.top+row.bottom-16)/2,color);
+            else{
+                HBRUSH brush=CreateSolidBrush(color);HPEN pen=CreatePen(PS_SOLID,1,color);
+                if(brush && pen){auto oldBrush=SelectObject(dc,brush);auto oldPen=SelectObject(dc,pen);POINT points[]={{x,y+1},{x,y-1},{x+5,y-1},{x+7,y+1},{x+14,y+1},{x+14,y+9},{x,y+9}};Polygon(dc,points,7);SelectObject(dc,oldPen);SelectObject(dc,oldBrush);}
+                if(pen)DeleteObject(pen);if(brush)DeleteObject(brush);
+            }
             row.left+=39;if(title.size()>2)title.erase(0,2);
         }else if(!key.empty() && key[0]==L't'){
             // Continue the folder guide only while the next row is also a child.
@@ -848,10 +883,15 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         ctx->chatList=Control(window,L"LISTBOX",L"",WS_BORDER|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,kChatList);
         ctx->chatFont=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
         if(ctx->chatFont){SendMessageW(ctx->chatList,WM_SETFONT,reinterpret_cast<WPARAM>(ctx->chatFont),TRUE);SendMessageW(ctx->history,WM_SETFONT,reinterpret_cast<WPARAM>(ctx->chatFont),TRUE);}
+        LoadFolderTexture(ctx);
         ctx->mcp=Control(window,L"STATIC",Tr(ctx,L"SC2 MCP: проверка...",L"SC2 MCP: checking..."),SS_LEFT,kMcp);
         ctx->model=Control(window,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL,kModel);
         ctx->config=Control(window,L"BUTTON",Tr(ctx,L"Настройки",L"Settings"),BS_OWNERDRAW|WS_TABSTOP,kSettings);
         ctx->input=Control(window,L"EDIT",L"",ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,kInput);
+        HDC fontDc=GetDC(window);int dpi=fontDc?GetDeviceCaps(fontDc,LOGPIXELSY):96;if(fontDc)ReleaseDC(window,fontDc);
+        ctx->inputFont=CreateFontW(-MulDiv(12,dpi,72),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        if(ctx->inputFont)SendMessageW(ctx->input,WM_SETFONT,reinterpret_cast<WPARAM>(ctx->inputFont),TRUE);
         SendMessageW(ctx->input,EM_SETLIMITTEXT,12000,0);
         ctx->attach=Control(window,L"BUTTON",Tr(ctx,L"Картинка",L"Image"),BS_OWNERDRAW|WS_TABSTOP,kAttach);
         for(size_t i=0;i<kMaxImages;++i){
@@ -1002,6 +1042,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         ClearImages(ctx,true);
         if(ctx->aiImages){ImageList_Destroy(ctx->aiImages);ctx->aiImages=nullptr;}
         if(ctx->chatFont){DeleteObject(ctx->chatFont);ctx->chatFont=nullptr;}
+        if(ctx->inputFont){DeleteObject(ctx->inputFont);ctx->inputFont=nullptr;}
+        delete ctx->folderTexture;ctx->folderTexture=nullptr;if(ctx->folderGdiToken){Gdiplus::GdiplusShutdown(ctx->folderGdiToken);ctx->folderGdiToken=0;}
     }
     return DefWindowProcW(window,msg,w,l);
 }
@@ -1074,8 +1116,8 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 // attachments or visible history.
 BOOL CALLBACK CheckLegacyChatWindow(HWND window,LPARAM raw){
     wchar_t cls[128]{};GetClassNameW(window,cls,128);auto safe=reinterpret_cast<bool*>(raw);
-    if(!lstrcmpW(cls,L"SC2AIButton.Settings.v21") || !lstrcmpW(cls,L"SC2AIButton.Settings.v22") || !lstrcmpW(cls,L"SC2AIButton.Settings.v23") || !lstrcmpW(cls,L"SC2AIButton.Settings.v24") || !lstrcmpW(cls,L"SC2AIButton.Settings.v25") || !lstrcmpW(cls,L"SC2AIButton.Settings.v26") || !lstrcmpW(cls,L"SC2AIButton.Settings.v27") || !lstrcmpW(cls,L"SC2AIButton.Settings.v28") || !lstrcmpW(cls,L"SC2AIButton.Settings.v29") || !lstrcmpW(cls,L"SC2AIButton.Settings.v30")){*safe=false;return FALSE;}
-    if(lstrcmpW(cls,kLegacyWindowClass21) && lstrcmpW(cls,kLegacyWindowClass22) && lstrcmpW(cls,kLegacyWindowClass23) && lstrcmpW(cls,kLegacyWindowClass24) && lstrcmpW(cls,kLegacyWindowClass25) && lstrcmpW(cls,kLegacyWindowClass26) && lstrcmpW(cls,kLegacyWindowClass27) && lstrcmpW(cls,kLegacyWindowClass28) && lstrcmpW(cls,kLegacyWindowClass29) && lstrcmpW(cls,kLegacyWindowClass30))return TRUE;
+    if(!lstrcmpW(cls,L"SC2AIButton.Settings.v21") || !lstrcmpW(cls,L"SC2AIButton.Settings.v22") || !lstrcmpW(cls,L"SC2AIButton.Settings.v23") || !lstrcmpW(cls,L"SC2AIButton.Settings.v24") || !lstrcmpW(cls,L"SC2AIButton.Settings.v25") || !lstrcmpW(cls,L"SC2AIButton.Settings.v26") || !lstrcmpW(cls,L"SC2AIButton.Settings.v27") || !lstrcmpW(cls,L"SC2AIButton.Settings.v28") || !lstrcmpW(cls,L"SC2AIButton.Settings.v29") || !lstrcmpW(cls,L"SC2AIButton.Settings.v30") || !lstrcmpW(cls,L"SC2AIButton.Settings.v31")){*safe=false;return FALSE;}
+    if(lstrcmpW(cls,kLegacyWindowClass21) && lstrcmpW(cls,kLegacyWindowClass22) && lstrcmpW(cls,kLegacyWindowClass23) && lstrcmpW(cls,kLegacyWindowClass24) && lstrcmpW(cls,kLegacyWindowClass25) && lstrcmpW(cls,kLegacyWindowClass26) && lstrcmpW(cls,kLegacyWindowClass27) && lstrcmpW(cls,kLegacyWindowClass28) && lstrcmpW(cls,kLegacyWindowClass29) && lstrcmpW(cls,kLegacyWindowClass30) && lstrcmpW(cls,kLegacyWindowClass31))return TRUE;
     HWND input=GetDlgItem(window,kInput),history=GetDlgItem(window,kDescription),list=GetDlgItem(window,kChatList),send=GetDlgItem(window,kSend);
     wchar_t label[64]{};GetWindowTextW(send,label,64);
     const wchar_t* locales[]={L"enUS",L"ruRU",L"deDE",L"esES",L"esMX",L"frFR",L"itIT",L"koKR",L"plPL",L"ptBR",L"zhCN",L"zhTW"};
@@ -1088,7 +1130,7 @@ BOOL CALLBACK CheckLegacyChatWindow(HWND window,LPARAM raw){
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12) || !lstrcmpW(cls,kLegacyWindowClass13) || !lstrcmpW(cls,kLegacyWindowClass14) || !lstrcmpW(cls,kLegacyWindowClass15) || !lstrcmpW(cls,kLegacyWindowClass16) || !lstrcmpW(cls,kLegacyWindowClass17) || !lstrcmpW(cls,kLegacyWindowClass18) || !lstrcmpW(cls,kLegacyWindowClass19) || !lstrcmpW(cls,kLegacyWindowClass20) || !lstrcmpW(cls,kLegacyWindowClass21) || !lstrcmpW(cls,kLegacyWindowClass22) || !lstrcmpW(cls,kLegacyWindowClass23) || !lstrcmpW(cls,kLegacyWindowClass24) || !lstrcmpW(cls,kLegacyWindowClass25) || !lstrcmpW(cls,kLegacyWindowClass26) || !lstrcmpW(cls,kLegacyWindowClass27) || !lstrcmpW(cls,kLegacyWindowClass28) || !lstrcmpW(cls,kLegacyWindowClass29) || !lstrcmpW(cls,kLegacyWindowClass30)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
+    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12) || !lstrcmpW(cls,kLegacyWindowClass13) || !lstrcmpW(cls,kLegacyWindowClass14) || !lstrcmpW(cls,kLegacyWindowClass15) || !lstrcmpW(cls,kLegacyWindowClass16) || !lstrcmpW(cls,kLegacyWindowClass17) || !lstrcmpW(cls,kLegacyWindowClass18) || !lstrcmpW(cls,kLegacyWindowClass19) || !lstrcmpW(cls,kLegacyWindowClass20) || !lstrcmpW(cls,kLegacyWindowClass21) || !lstrcmpW(cls,kLegacyWindowClass22) || !lstrcmpW(cls,kLegacyWindowClass23) || !lstrcmpW(cls,kLegacyWindowClass24) || !lstrcmpW(cls,kLegacyWindowClass25) || !lstrcmpW(cls,kLegacyWindowClass26) || !lstrcmpW(cls,kLegacyWindowClass27) || !lstrcmpW(cls,kLegacyWindowClass28) || !lstrcmpW(cls,kLegacyWindowClass29) || !lstrcmpW(cls,kLegacyWindowClass30) || !lstrcmpW(cls,kLegacyWindowClass31)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -1105,14 +1147,14 @@ BOOL CALLBACK CloseStaleOverlay(HWND window, LPARAM raw){
     if(GetWindow(window,GW_OWNER)==ctx->owner && (!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)))DestroyWindow(window);
     return TRUE;
 }
-unsigned LegacyMask(HWND toolbar){
-    const wchar_t* props[]={kLegacyProperty1,kLegacyProperty2,kLegacyProperty3,kLegacyProperty4,kLegacyProperty5,kLegacyProperty6,kLegacyProperty7,kLegacyProperty8,kLegacyProperty9,kLegacyProperty10,kLegacyProperty11,kLegacyProperty12,kLegacyProperty13,kLegacyProperty14,kLegacyProperty15,kLegacyProperty16,kLegacyProperty17,kLegacyProperty18,kLegacyProperty19,kLegacyProperty20,kLegacyProperty21,kLegacyProperty22,kLegacyProperty23,kLegacyProperty24,kLegacyProperty25,kLegacyProperty26,kLegacyProperty27,kLegacyProperty28,kLegacyProperty29,kLegacyProperty30};
-    unsigned mask=0;for(unsigned i=0;i<30;++i)if(GetPropW(toolbar,props[i]))mask|=1u<<i;return mask;
+unsigned long long LegacyMask(HWND toolbar){
+    const wchar_t* props[]={kLegacyProperty1,kLegacyProperty2,kLegacyProperty3,kLegacyProperty4,kLegacyProperty5,kLegacyProperty6,kLegacyProperty7,kLegacyProperty8,kLegacyProperty9,kLegacyProperty10,kLegacyProperty11,kLegacyProperty12,kLegacyProperty13,kLegacyProperty14,kLegacyProperty15,kLegacyProperty16,kLegacyProperty17,kLegacyProperty18,kLegacyProperty19,kLegacyProperty20,kLegacyProperty21,kLegacyProperty22,kLegacyProperty23,kLegacyProperty24,kLegacyProperty25,kLegacyProperty26,kLegacyProperty27,kLegacyProperty28,kLegacyProperty29,kLegacyProperty30,kLegacyProperty31};
+    unsigned long long mask=0;for(unsigned i=0;i<31;++i)if(GetPropW(toolbar,props[i]))mask|=1ull<<i;return mask;
 }
 // Reconcile the toolbar with older DLL versions that may remain loaded after an in-place
 // update.
 void Reconcile(Context* ctx){
-    unsigned mask=LegacyMask(ctx->toolbar);
+    unsigned long long mask=LegacyMask(ctx->toolbar);
     if(mask!=ctx->legacyMask){
         RemoveWindowSubclass(ctx->owner,OwnerProc,reinterpret_cast<UINT_PTR>(ctx));
         if(SetWindowSubclass(ctx->owner,OwnerProc,reinterpret_cast<UINT_PTR>(ctx),reinterpret_cast<DWORD_PTR>(ctx)))ctx->legacyMask=mask;
@@ -1134,7 +1176,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
     if(auto existing=static_cast<Context*>(GetPropW(toolbar,kProperty))){Reconcile(existing);SetLastError(ERROR_ALREADY_EXISTS);return FALSE;}
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=0;unsigned legacyMask=LegacyMask(toolbar);for(int version=30;version>=1;--version)if(legacyMask&(1u<<(version-1))){legacy=version;break;}
+    int legacy=0;unsigned long long legacyMask=LegacyMask(toolbar);for(int version=31;version>=1;--version)if(legacyMask&(1ull<<(version-1))){legacy=version;break;}
     if(legacy>=21){bool safe=true;EnumThreadWindows(GetCurrentThreadId(),CheckLegacyChatWindow,reinterpret_cast<LPARAM>(&safe));if(!safe){SetLastError(ERROR_BUSY);return FALSE;}}
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) {SetLastError(ERROR_INVALID_INDEX);return FALSE;}
     auto ctx=new(std::nothrow) Context{};
@@ -1287,7 +1329,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v31");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v32");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

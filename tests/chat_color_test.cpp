@@ -7,7 +7,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v31"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v32"))ai=h;return TRUE;}
 static bool SavePreview(HWND window,const wchar_t* path){
     RECT r{};if(!GetWindowRect(window,&r))return false;int width=r.right-r.left,height=r.bottom-r.top;if(width<=0 || height<=0)return false;
     BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
@@ -36,6 +36,8 @@ int wmain(){
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai)return 8;
     auto event=[&](const char* kind,std::vector<std::wstring> fields={}){auto e=new BridgeEvent{nullptr,kind,fields};SendMessageW(ai,WM_AI_BRIDGE,0,reinterpret_cast<LPARAM>(e));};
     HWND edit=GetDlgItem(ai,105);
+    LOGFONTW inputFont{};auto font=reinterpret_cast<HFONT>(SendMessageW(GetDlgItem(ai,107),WM_GETFONT,0,0));
+    if(!font || GetObjectW(font,sizeof(inputFont),&inputFont)!=sizeof(inputFont) || inputFont.lfHeight>-15)return 27;
     auto check=[&](const wchar_t* text,COLORREF expected){
         FINDTEXTEXW find{};find.chrg.cpMin=0;find.chrg.cpMax=-1;find.lpstrText=const_cast<wchar_t*>(text);
         if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&find))<0)return false;
@@ -89,6 +91,7 @@ int wmain(){
         event("threads_begin");event("thread",{L"demo",L"Карта и триггеры",L"",L"sc2-ai:in-editor",L"IN_EDITOR",L"blue"});event("threads_end");event("selected",{L"demo"});event("ready",{L"1"});
         wchar_t modelName[128]{};GetWindowTextW(GetDlgItem(ai,110),modelName,128);if(lstrcmpW(modelName,L"GPT-6.1-Sol") || !IsWindowEnabled(GetDlgItem(ai,110)))return 23;
         event("history",{L"You: Покажи, как работает карта\r\n\r\nAI: Проверил открытую карту. **Доступные действия:**\r\n- Читать данные юнитов\r\n- Проверять настройки\r\n\r\n[MCP: sc2editor / modkit.tools — completed]\r\n\r\n[MCP: sc2editor / modkit.batch — completed]\r\n\r\nAI: Пример кода:\r\n```galaxy\r\nvoid Init() {\r\n    // Your map logic\r\n}\r\n```"});
+        SetWindowTextW(GetDlgItem(ai,107),L"Напиши сообщение для AI...");
         SetWindowPos(ai,nullptr,0,0,1200,800,SWP_NOZORDER|SWP_NOACTIVATE);UpdateWindow(ai);
         if(!SavePreview(ai,previewPath))return 21;
     }
