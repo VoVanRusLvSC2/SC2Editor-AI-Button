@@ -7,14 +7,14 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v35"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v36"))ai=h;return TRUE;}
 struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
 static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
 static DWORD WINAPI SelectFirstOutline(void* raw){
     auto probe=static_cast<PopupProbe*>(raw);if(!SetThreadDesktop(probe->desktop))return 1;HWND popup=nullptr;
     for(int i=0;i<100 && !popup;++i){EnumThreadWindows(probe->uiThread,FindMenu,reinterpret_cast<LPARAM>(&popup));if(!popup)Sleep(20);}
     if(!popup)return 2;probe->found=true;auto menu=reinterpret_cast<HMENU>(SendMessageW(popup,0x01e1,0,0));
-    wchar_t first[256]{},second[256]{};if(menu && GetMenuItemCount(menu)>=2){GetMenuStringW(menu,0,first,256,MF_BYPOSITION);GetMenuStringW(menu,1,second,256,MF_BYPOSITION);probe->labels=wcsstr(first,L"usertext") && wcsstr(second,L"firsttext");}
+    wchar_t first[256]{},second[256]{};if(menu && GetMenuItemCount(menu)==2){GetMenuStringW(menu,0,first,256,MF_BYPOSITION);GetMenuStringW(menu,1,second,256,MF_BYPOSITION);probe->labels=wcsstr(first,L"usertext") && wcsstr(second,L"secondrequest");}
     PostMessageW(ai,WM_KEYDOWN,VK_DOWN,0);PostMessageW(ai,WM_KEYDOWN,VK_RETURN,0);Sleep(500);if(IsWindow(popup))PostMessageW(popup,WM_CANCELMODE,0,0);return 0;
 }
 static bool SavePreview(HWND window,const wchar_t* path){
@@ -53,7 +53,7 @@ int wmain(){
         CHARRANGE selection{find.chrgText.cpMin,find.chrgText.cpMin+1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&selection));
         CHARFORMAT2W format{};format.cbSize=sizeof(format);SendMessageW(edit,EM_GETCHARFORMAT,SCF_SELECTION,reinterpret_cast<LPARAM>(&format));return (format.dwMask&CFM_COLOR) && format.crTextColor==expected;
     };
-    event("history",{L"You: usertext\r\n\r\nAI: firsttext **boldtext**\r\n\r\nsecondtext\r\n\r\n[bracketed reply]\r\n\r\n[Command]\r\n\r\nAI: thirdtext"});
+    event("history",{L"You: usertext question about the native editor\r\n\r\nAI: firsttext **boldtext**\r\n\r\nsecondtext\r\n\r\n[bracketed reply]\r\n\r\n[Command]\r\n\r\nAI: thirdtext\r\n\r\nYou: да\r\n\r\nAI: Готово.\r\n\r\nYou: secondrequest investigate the map\r\n\r\nAI: final answer"});
     if(!IsWindowEnabled(GetDlgItem(ai,123)))return 30;
     CHARRANGE atEnd{-1,-1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&atEnd));
     PopupProbe probe{GetCurrentThreadId(),desktop,false,false};HANDLE thread=CreateThread(nullptr,0,SelectFirstOutline,&probe,0,nullptr);if(!thread)return 31;
@@ -94,6 +94,13 @@ int wmain(){
     GetWindowRect(GetDlgItem(ai,119),&attachRect);GetWindowRect(GetDlgItem(ai,108),&sendRect);
     if(attachRect.left!=input.left || model.top<input.bottom || attachRect.right>model.left || model.right>sendRect.left || sendRect.right>input.right)return 15;
     for(int id:{108,109,119,120,121,122})if((GetWindowLongPtrW(GetDlgItem(ai,id),GWL_STYLE)&BS_TYPEMASK)!=BS_OWNERDRAW)return 26;
+    event("clear");event("line",{L"AI: "});event("delta",{L"before drag"});SendMessageW(ai,WM_TIMER,2,0);
+    SendMessageW(edit,WM_VSCROLL,MAKEWPARAM(SB_THUMBTRACK,0),0);
+    event("delta",{L" deferred during drag"});SendMessageW(ai,WM_TIMER,2,0);
+    FINDTEXTEXW deferred{};deferred.chrg.cpMin=0;deferred.chrg.cpMax=-1;deferred.lpstrText=const_cast<wchar_t*>(L"deferred during drag");
+    if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&deferred))>=0)return 38;
+    SendMessageW(edit,WM_VSCROLL,MAKEWPARAM(SB_ENDSCROLL,0),0);SendMessageW(ai,WM_TIMER,2,0);
+    if(!check(L"deferred during drag",RGB(0,105,170)))return 39;
     event("clear");if(IsWindowEnabled(GetDlgItem(ai,123)))return 33;event("line",{L"AI: "});event("delta",{L"before action"});
     event("event",{L"MCP: sc2editor / first"});event("event",{L"MCP: sc2editor / second"});event("delta",{L"after action"});SendMessageW(ai,WM_TIMER,2,0);
     if(!check(L"before action",RGB(0,105,170)) || !check(L"after action",RGB(0,105,170)) || check(L"MCP: sc2editor / first",RGB(104,113,123)))return 24;

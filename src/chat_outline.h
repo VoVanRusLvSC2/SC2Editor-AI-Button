@@ -25,3 +25,15 @@ inline std::wstring OutlineSnippet(const std::wstring& source,bool preferHeading
     for(wchar_t ch:plain){if(iswspace(ch)){space=!result.empty();continue;}if(space)result+=L' ';space=false;result+=ch;}
     if(result.size()>72){result.resize(69);if(!result.empty() && result.back()>=0xD800 && result.back()<=0xDBFF)result.pop_back();result+=L"…";}return result;
 }
+
+// Count visible content without depending on the Windows display language. CJK text can
+// carry a complete request in fewer characters than alphabetic text.
+inline bool OutlineSubstantial(const std::wstring& text,size_t minimum,size_t cjkMinimum){
+    size_t visible=0,cjk=0;
+    for(wchar_t ch:text){
+        if(!iswspace(ch) && !(ch<128 && iswpunct(ch)))++visible;
+        if((ch>=0x3400 && ch<=0x9fff) || (ch>=0xac00 && ch<=0xd7af) || (ch>=0x3040 && ch<=0x30ff))++cjk;
+        if(visible>=minimum || cjk>=cjkMinimum)return true;
+    }
+    return false;
+}

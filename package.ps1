@@ -1,4 +1,4 @@
-param([string]$Version='0.32.1-alpha')
+param([string]$Version='0.33.0-alpha')
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
 & (Join-Path $PSScriptRoot 'build.ps1')
@@ -13,6 +13,7 @@ New-Item -ItemType Directory -Force (Join-Path $stage 'bridge') | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'bridge\main.mjs'), (Join-Path $PSScriptRoot 'bridge\chat_titles.mjs'), (Join-Path $PSScriptRoot 'bridge\locales.json'), (Join-Path $PSScriptRoot 'bridge\mcp_spawn.mjs'), (Join-Path $PSScriptRoot 'bridge\mcp_refresh.mjs'), (Join-Path $PSScriptRoot 'bridge\package.json'), (Join-Path $PSScriptRoot 'bridge\package-lock.json') -Destination (Join-Path $stage 'bridge') -Force
 $archive = Join-Path $destination "SC2Editor-AI-Button-win64-$Version.zip"
 # Only ship declared files: a local Claude SDK installation can be very large.
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $entries = @('SC2AIButton.dll','SC2AILoader.exe','Start AI Button.cmd','Setup Claude.cmd','Login Claude.cmd','README.md','README.ru.md','LICENSE','docs\chat-integration-plan.ru.md','bridge\main.mjs','bridge\chat_titles.mjs','bridge\locales.json','bridge\mcp_spawn.mjs','bridge\mcp_refresh.mjs','bridge\package.json','bridge\package-lock.json')
 $stream = [IO.File]::Open($archive,[IO.FileMode]::Create)
