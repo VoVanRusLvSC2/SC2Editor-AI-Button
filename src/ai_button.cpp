@@ -10,12 +10,14 @@ constexpr wchar_t kLegacyProperty1[] = L"SC2AIButton.context.v1";
 constexpr wchar_t kLegacyProperty2[] = L"SC2AIButton.context.v2";
 constexpr wchar_t kLegacyProperty3[] = L"SC2AIButton.context.v3";
 constexpr wchar_t kLegacyProperty4[] = L"SC2AIButton.context.v4";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v5";
+constexpr wchar_t kLegacyProperty5[] = L"SC2AIButton.context.v5";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v6";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
 constexpr wchar_t kLegacyWindowClass4[] = L"SC2AIButton.Window.v4";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v5";
+constexpr wchar_t kLegacyWindowClass5[] = L"SC2AIButton.Window.v5";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v6";
 constexpr UINT kCommand = 60000;
 HMODULE moduleHandle = nullptr;
 HHOOK threadHook = nullptr;
@@ -119,33 +121,33 @@ HBITMAP CreateNativeAIIcon(HWND toolbar, HIMAGELIST images, int insertion, int w
     for(int i=0;i<width*height;++i)pixels[i]=0;
     int sourceW=right-left+1,sourceH=bottom-top+1;
     int targetH=sourceH; if(targetH>height-4)targetH=height-4;
-    int iWidth=width/5; if(iWidth<4)iWidth=4;
+    int iWidth=width/4; if(iWidth<5)iWidth=5;
     int aWidth=sourceW*targetH/sourceH;
     if(aWidth>width-iWidth-5)aWidth=width-iWidth-5;
     if(aWidth<3){SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);return nullptr;}
     int x0=(width-aWidth-iWidth-1)/2,y0=(height-targetH)/2;
     for(int y=0;y<targetH;++y){
         int sy=top+y*sourceH/targetH;
-        DWORD darkest=0,brightest=0; int minLight=1000,maxBlue=-1000;
-        for(int x=left;x<=right;++x){
-            DWORD p=source[sy*width+x]&0xffffff;if(p==background)continue;
-            int r=(p>>16)&255,g=(p>>8)&255,b=p&255,light=r+g+b;
-            if(light<minLight){minLight=light;darkest=p;}
-            int blue=g+b-r;if(blue>maxBlue){maxBlue=blue;brightest=p;}
-        }
-        if(minLight==1000){darkest=0x001122;brightest=0x5090b0;}
+        int runEnd=right;
+        while(runEnd>=left && (source[sy*width+runEnd]&0xffffff)==background)--runEnd;
+        int runStart=runEnd;
+        while(runStart>left && (source[sy*width+runStart-1]&0xffffff)!=background)--runStart;
         for(int x=0;x<aWidth;++x){
             DWORD p=source[sy*width+left+x*sourceW/aWidth]&0xffffff;
             if(p!=background)pixels[(y0+y)*width+x0+x]=0xff000000|p;
         }
-        // Narrow serif I uses colors sampled from the corresponding row of A.
-        for(int x=0;x<iWidth;++x){
+        // Copy each horizontal slice of the native A's right-hand stroke into
+        // the I. This preserves the actual textured highlight and dark bevel,
+        // including their changes from one row to the next.
+        if(runEnd>=runStart){
             bool bar=y<2 || y>=targetH-2;
-            bool stem=x>=iWidth/3 && x<iWidth-iWidth/3;
-            if(!bar && !stem)continue;
-            bool edge=(bar && (y==0 || y==targetH-1 || x==0 || x==iWidth-1)) ||
-                (!bar && (x==iWidth/3 || x==iWidth-iWidth/3-1));
-            pixels[(y0+y)*width+x0+aWidth+1+x]=0xff000000|(edge?darkest:brightest);
+            int begin=bar?0:1, end=bar?iWidth:iWidth-1;
+            int runWidth=runEnd-runStart+1, targetWidth=end-begin;
+            for(int x=begin;x<end;++x){
+                int sample=runStart+(x-begin)*runWidth/targetWidth;
+                DWORD p=source[sy*width+sample]&0xffffff;
+                pixels[(y0+y)*width+x0+aWidth+1+x]=0xff000000|p;
+            }
         }
     }
     SelectObject(dc,old);DeleteDC(dc);return bitmap;
@@ -267,7 +269,7 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
+    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -290,7 +292,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
         command==0 || command>0xffff || GetPropW(toolbar,kProperty)) return FALSE;
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0)));
+    int legacy=GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0))));
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) return FALSE;
     auto ctx=new(std::nothrow) Context{toolbar,owner,nullptr,command,legacy,false,nullptr,{}};
     if (!ctx) return FALSE;
@@ -380,7 +382,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     wchar_t barClass[64]{}; GetClassNameW(toolbar,barClass,64);
     int index=0;
     if (lstrcmpiW(barClass,TOOLBARCLASSNAMEW)) return TRUE;
-    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4)) {
+    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5)) {
         auto oldIndex=SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0);
         if (oldIndex>=0) SC2AI_Attach(toolbar,static_cast<int>(oldIndex),kCommand);
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
@@ -423,7 +425,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v5");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v6");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

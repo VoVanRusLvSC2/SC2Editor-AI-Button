@@ -8,7 +8,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM owner) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v5") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v6") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
