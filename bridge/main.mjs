@@ -1,6 +1,7 @@
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
-import {existsSync, readdirSync, statSync, readFileSync} from 'node:fs';
+import {existsSync, readdirSync, statSync, readFileSync, mkdirSync, writeFileSync, unlinkSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import {pathToFileURL, fileURLToPath} from 'node:url';
@@ -26,6 +27,14 @@ function mapPrompt(text){
   return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. Файлы рабочей папки можно редактировать напрямую по запросу пользователя. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
 }
 const claudeDirs=new Map();
+// Membership belongs to this extension and must not modify Codex desktop state
+// or change the working directory of chats operating on the current map.
+const editorGroup='sc2-ai:in-editor';
+const stateDir=process.env.SC2_AI_STATE_DIR||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'.local','share'),'SC2Editor-AI-Button','in-editor');
+const marker=(kind,id)=>path.join(stateDir,createHash('sha256').update(kind+'\0'+id).digest('hex'));
+function isEditorChat(kind,id){return !!id&&existsSync(marker(kind,id));}
+function markEditorChat(kind,id){mkdirSync(stateDir,{recursive:true});try{writeFileSync(marker(kind,id),'',{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;}}
+function forgetEditorChat(kind,id){try{unlinkSync(marker(kind,id));}catch(e){if(e.code!=='ENOENT')throw e;}}
 let codex, claude, aborter, nextApproval = 1, questionRequest = null, loginId = null; const approvals = new Map();
 function findCodex(){
   if(process.env.SC2_AI_CODEX_PATH && existsSync(process.env.SC2_AI_CODEX_PATH))return process.env.SC2_AI_CODEX_PATH;
@@ -61,7 +70,7 @@ class AppServer{
     if(m.method==='item/agentMessage/delta')emit('delta',p.delta||'');
     if(m.method==='item/started' && p.item?.type==='mcpToolCall')emit('event',`MCP: ${p.item.server} / ${p.item.tool}`);
     if(m.method==='item/started' && p.item?.type==='commandExecution')emit('event',tr('Выполняется команда','Running a command'));
-    if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);if(turn.error?.message)emit('error',turn.error.message);}
+    if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);if(turn.error?.message)emit('error',turn.error.message);listCodex(generation).catch(e=>emit('error',e.message));}
     if(m.method==='error' && p.error?.message)emit('error',p.error.message);
   }
   serverRequest(m){
@@ -122,7 +131,7 @@ async function listCodex(gen=generation){
   };
   emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){const project=findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
+    for(const t of r.data||[]){const project=isEditorChat('codex',t.id)?{id:editorGroup,name:'IN_EDITOR',color:'blue'}:findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
@@ -157,7 +166,7 @@ function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
-  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
+  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;if(process.env.SC2_AI_TEST_EPHEMERAL!=='1')markEditorChat('codex',selected);emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
@@ -185,7 +194,7 @@ async function claudeConnect(gen){
   emit('models_begin');for(const [id,name] of [['',tr('По умолчанию','Default')],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
   mcpStatus=sc2Config()?tr('SC2 MCP настроен для Claude','SC2 MCP configured for Claude'):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
-async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'',s.cwd||'',s.cwd?path.basename(s.cwd):'');}emit('threads_end');}
+async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);const own=isEditorChat('claude',s.sessionId);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'',own?editorGroup:(s.cwd||''),own?'IN_EDITOR':(s.cwd?path.basename(s.cwd):''),own?'blue':'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
   for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');const images=parts.filter(x=>x.type==='image').length;if(text||images)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text)+(images?'\n['+tr('Изображение','Image')+(images>1?' × '+images:'')+']':''));}
   let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
@@ -199,7 +208,7 @@ async function sendClaude(text,images){
   async function* imagePrompt(){yield {type:'user',message:{role:'user',content:[...images.map(image=>({type:'image',source:{type:'base64',media_type:'image/png',data:image.bytes.toString('base64')}})),{type:'text',text:content}]},parent_tool_use_id:null};}
   let accepted=false;try{for await(const message of claude.query({prompt:images.length?imagePrompt():content,options})){
     if(!accepted){accepted=true;emit('accepted');}
-    if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;emit('selected',selected);}
+    if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;markEditorChat('claude',selected);emit('selected',selected);}
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
     if(message.type==='result' && message.is_error){failed=true;emit('error',(message.errors||[]).join('\n')||tr('Claude завершился с ошибкой.','Claude returned an error.'));}
@@ -220,6 +229,18 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
   }
   else if(cmd==='map'){mapContext={path:a[0]||'',dirty:a[1]==='1',caption:a[2]||'',windowId:a[3]||'',processId:a[4]||'',inferred:a[5]==='1'};showContext();}
   else if(cmd==='refresh'){if(provider==='codex')await listCodex();else await listClaude();}
+  else if(cmd==='delete'){
+    if(running)throw Error(tr('Остановите ответ перед удалением чата.','Stop the response before deleting a chat.'));
+    const id=a[0];if(!id || id!==selected)throw Error(tr('Выберите чат для удаления.','Select a chat to delete.'));
+    const deletingProvider=provider,gen=++generation;
+    running={provider:'deleting'};emit('busy','1');
+    try{
+      if(deletingProvider==='codex')await codex.request('thread/delete',{threadId:id});
+      else {if(typeof claude.deleteSession!=='function')throw Error(tr('Обновите Claude Agent SDK для удаления чатов.','Update Claude Agent SDK to delete chats.'));await claude.deleteSession(id,claudeDirs.get(id)?{dir:claudeDirs.get(id)}:{});claudeDirs.delete(id);}
+      try{forgetEditorChat(deletingProvider,id);}catch{emit('event',tr('Не удалось очистить метку удалённого чата','Could not remove the deleted chat marker'));}
+      if(gen===generation && provider===deletingProvider && selected===id){selected='';emit('clear');emit('selected','');deletingProvider==='codex'?await listCodex(gen):await listClaude(gen);}
+    }finally{running=null;emit('busy','0');}
+  }
   else if(cmd==='open'){if(running)throw Error(tr('Остановите ответ перед выбором чата.','Stop the response before selecting a chat.'));selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
   else if(cmd==='new'){if(running)throw Error(tr('Остановите текущий ответ.','Stop the current response first.'));selected='';generation++;emit('clear');emit('selected','');}
   else if(cmd==='model')model=a[0];

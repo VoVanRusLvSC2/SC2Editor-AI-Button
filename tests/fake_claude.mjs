@@ -1,5 +1,7 @@
 import {readFileSync} from 'node:fs';
-export async function listSessions(){return [{sessionId:'claude-1',summary:'Claude test'}]}
+let deleted=false;
+export async function listSessions(){return deleted?[]:[{sessionId:'claude-1',summary:'Claude test'}]}
+export async function deleteSession(id){if(id!=='claude-1')throw Error('Wrong session');deleted=true;}
 export async function getSessionMessages(){return [{type:'user',message:{content:'прошлый вопрос'}},{type:'assistant',message:{content:[{type:'text',text:'прошлый ответ'}]}}]}
 export async function* query({prompt,options}){
   if(typeof prompt!=='string'){

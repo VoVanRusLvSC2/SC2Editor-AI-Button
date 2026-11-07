@@ -22,8 +22,9 @@ int wmain(int argc,wchar_t** argv){
     SendMessageW(bar,TB_BUTTONSTRUCTSIZE,sizeof(TBBUTTON),0);TBBUTTON buttons[2]{};for(int i=0;i<2;++i){buttons[i].iBitmap=I_IMAGENONE;buttons[i].idCommand=100+i;buttons[i].fsState=TBSTATE_ENABLED;}
     if(!SendMessageW(bar,TB_ADDBUTTONSW,2,reinterpret_cast<LPARAM>(buttons)))return 7;
     HMODULE dll=LoadLibraryW(argv[1]);if(!dll)return 8;auto attach=reinterpret_cast<Attach>(GetProcAddress(dll,"SC2AI_Attach"));if(!attach||!attach(bar,1,500))return 9;
-    SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai||!Wait(Ready,ai,30000))return 10;
-    HWND list=GetDlgItem(ai,113),input=GetDlgItem(ai,107);SendMessageW(list,LB_SETCURSEL,2,0);SendMessageW(ai,WM_COMMAND,MAKEWPARAM(113,LBN_SELCHANGE),reinterpret_cast<LPARAM>(list));
+    SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai)return 10;
+    SendMessageW(ai,WM_COMMAND,MAKEWPARAM(120,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(ai,120)));if(!Wait(Ready,ai,30000))return 10;
+    HWND list=GetDlgItem(ai,113),input=GetDlgItem(ai,107);SendMessageW(list,LB_SETCURSEL,3,0);SendMessageW(ai,WM_COMMAND,MAKEWPARAM(113,LBN_SELCHANGE),reinterpret_cast<LPARAM>(list));
     for(int i=0;i<100;++i)Pump();if(!IsWindowEnabled(input))return 11;
     HDC dc=GetDC(owner);HBITMAP bitmap=CreateCompatibleBitmap(dc,4,4);ReleaseDC(owner,dc);if(!bitmap||!OpenClipboard(ai))return 12;
     if(!EmptyClipboard()||!SetClipboardData(CF_BITMAP,bitmap))return 13;CloseClipboard();SendMessageW(input,WM_PASTE,0,0);

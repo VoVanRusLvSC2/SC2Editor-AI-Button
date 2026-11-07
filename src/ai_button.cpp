@@ -77,7 +77,7 @@ struct Context {
     int legacy; unsigned legacyMask; bool ownsImages; HIMAGELIST images;
     TBBUTTONINFOW original;
     HWND aiToolbar, codex, claude, heading, status, description, history, input, send;
-    HWND settings, model, config; bool claudeSelected;
+    HWND settings, model, config, showAll, showEditor, deleteChat; bool claudeSelected, allChats;
     HIMAGELIST aiImages;
     BridgeState* bridge; HWND chatList,mcp; HFONT chatFont;
     std::vector<std::wstring> modelIds,chatRows,collapsedGroups;std::vector<ChatItem> chats;std::wstring selectedId;bool ready,busy,awaitingAnswer,pendingSend,windowActive,russian,rich;
@@ -241,7 +241,8 @@ void ReleaseOwnedImages(Context* ctx) {
 enum : int { kToolbar=100, kCodex=101, kClaude=102, kHeading=103,
              kStatus=104, kDescription=105, kHistory=106, kInput=107, kSend=108,
              kSettings=109, kModel=110, kChatList=113, kNewChat=114, kRefresh=115, kStop=116, kMcp=117, kLogin=118,
-             kAttach=119,kPreviewBase=130,kRemoveImageBase=140 };
+             kAttach=119,kShowAll=120,kShowEditor=121,kDeleteChat=122,kPreviewBase=130,kRemoveImageBase=140 };
+constexpr wchar_t kEditorGroup[]=L"sc2-ai:in-editor";
 
 HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int id) {
     HWND child=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,0,0,0,0,
@@ -348,7 +349,11 @@ void LayoutControls(Context* ctx,HWND window) {
     int inputY=height-80;if(inputY<top+160)inputY=top+160;
     int attachmentSpace=ctx->attachments.empty()?0:64;
     MoveWindow(ctx->description,mainX,top+60,mainW,inputY-top-72-attachmentSpace,TRUE);
-    MoveWindow(ctx->history,sidebarX,top,side-24,22,TRUE);
+    bool narrow=side<250;int allX=sidebarX+(narrow?40:48),allW=narrow?32:38,editorX=allX+allW+2,editorW=narrow?72:86,deleteX=editorX+editorW+2;
+    MoveWindow(ctx->history,sidebarX,top,narrow?38:44,24,TRUE);
+    MoveWindow(ctx->showAll,allX,top-4,allW,26,TRUE);
+    MoveWindow(ctx->showEditor,editorX,top-4,editorW,26,TRUE);
+    MoveWindow(ctx->deleteChat,deleteX,top-4,narrow?38:50,26,TRUE);
     MoveWindow(ctx->chatList,sidebarX,top+30,side-30,height-top-44,TRUE);
     MoveWindow(ctx->attach,mainX,inputY,86,32,TRUE);
     MoveWindow(ctx->input,mainX+94,inputY,mainW>215?mainW-206:mainW,52,TRUE);
@@ -456,6 +461,10 @@ void UpdateControls(Context* ctx){
     SetWindowTextW(ctx->send,ctx->awaitingAnswer?Tr(ctx,L"Ответить",L"Reply"):(ctx->busy?Tr(ctx,L"Остановить",L"Stop"):Tr(ctx,L"Отправить",L"Send")));
     EnableWindow(ctx->model,ctx->ready && !ctx->busy && !ctx->modelIds.empty());
     EnableWindow(ctx->chatList,ctx->ready && !ctx->busy);
+    EnableWindow(ctx->showAll,ctx->ready && !ctx->busy);EnableWindow(ctx->showEditor,ctx->ready && !ctx->busy);
+    int row=static_cast<int>(SendMessageW(ctx->chatList,LB_GETCURSEL,0,0));
+    bool selectedChat=row>=0 && static_cast<size_t>(row)<ctx->chatRows.size() && !ctx->selectedId.empty() && ctx->chatRows[row]==L"t"+ctx->selectedId;
+    EnableWindow(ctx->deleteChat,ctx->ready && !ctx->busy && selectedChat);
     EnableWindow(ctx->attach,ctx->ready && !ctx->busy);for(auto button:ctx->removes)EnableWindow(button,ctx->ready && !ctx->busy);
 }
 void SelectChatRow(Context* ctx){
@@ -467,16 +476,16 @@ void RenderChats(Context* ctx){
     SendMessageW(ctx->chatList,LB_RESETCONTENT,0,0);ctx->chatRows.clear();
     auto add=[&](const std::wstring& text,const std::wstring& key){if(SendMessageW(ctx->chatList,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(text.c_str()))>=0)ctx->chatRows.push_back(key);};
     add(Tr(ctx,L"＋ Новый чат",L"＋ New chat"),L"n");
-    std::vector<std::wstring> groups;
-    for(const auto& chat:ctx->chats)if(std::find(groups.begin(),groups.end(),chat.group)==groups.end())groups.push_back(chat.group);
+    std::vector<std::wstring> groups{kEditorGroup};
+    for(const auto& chat:ctx->chats)if((ctx->allChats || chat.group==kEditorGroup) && std::find(groups.begin(),groups.end(),chat.group)==groups.end())groups.push_back(chat.group);
     for(const auto& group:groups){
         auto first=std::find_if(ctx->chats.begin(),ctx->chats.end(),[&](const ChatItem& chat){return chat.group==group;});
         bool collapsed=std::find(ctx->collapsedGroups.begin(),ctx->collapsedGroups.end(),group)!=ctx->collapsedGroups.end();
-        auto title=first->name.empty()?std::wstring(Tr(ctx,L"Другие чаты",L"Other chats")):first->name;
+        auto title=group==kEditorGroup?std::wstring(L"IN_EDITOR"):(first->name.empty()?std::wstring(Tr(ctx,L"Другие чаты",L"Other chats")):first->name);
         add(std::wstring(collapsed?L"▸ ":L"▾ ")+title,L"g"+group);
         if(!collapsed)for(const auto& chat:ctx->chats)if(chat.group==group)add(L"    "+chat.title,L"t"+chat.id);
     }
-    SelectChatRow(ctx);InvalidateRect(ctx->chatList,nullptr,TRUE);
+    SelectChatRow(ctx);InvalidateRect(ctx->chatList,nullptr,TRUE);UpdateControls(ctx);
 }
 COLORREF FolderColor(const std::wstring& color){
     if(color==L"blue")return RGB(51,156,255);
@@ -535,7 +544,7 @@ void OnBridge(Context* ctx,const BridgeEvent& e){
     else if(e.kind=="threads_begin"){ctx->chats.clear();RenderChats(ctx);}
     else if(e.kind=="thread")ctx->chats.push_back({value(0),value(1),value(3),value(4),value(5)});
     else if(e.kind=="threads_end"){RenderChats(ctx);if(!value(0).empty())Append(ctx,L"\r\n["+value(0)+L"]\r\n",RGB(104,113,123));}
-    else if(e.kind=="selected"){ctx->selectedId=value(0);SelectChatRow(ctx);}
+    else if(e.kind=="selected"){ctx->selectedId=value(0);SelectChatRow(ctx);UpdateControls(ctx);}
     else if(e.kind=="models_begin"){ctx->modelIds.clear();SendMessageW(ctx->model,CB_RESETCONTENT,0,0);}
     else if(e.kind=="model"){
         auto id=value(0),name=value(1);int i=static_cast<int>(SendMessageW(ctx->model,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name.c_str())));
@@ -562,6 +571,10 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         ctx->description=Control(window,ctx->rich?MSFTEDIT_CLASS:L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|WS_VSCROLL,kDescription);
         SendMessageW(ctx->description,EM_SETLIMITTEXT,4*1024*1024,0);
         ctx->history=Control(window,L"STATIC",Tr(ctx,L"ЧАТЫ",L"CHATS"),SS_LEFT,kHistory);
+        ctx->showAll=Control(window,L"BUTTON",Tr(ctx,L"Все",L"All"),BS_AUTORADIOBUTTON|BS_PUSHLIKE|WS_GROUP,kShowAll);
+        ctx->showEditor=Control(window,L"BUTTON",L"IN_EDITOR",BS_AUTORADIOBUTTON|BS_PUSHLIKE,kShowEditor);
+        ctx->deleteChat=Control(window,L"BUTTON",Tr(ctx,L"Удал.",L"Delete"),BS_PUSHBUTTON,kDeleteChat);
+        SendMessageW(ctx->showEditor,BM_SETCHECK,BST_CHECKED,0);
         ctx->chatList=Control(window,L"LISTBOX",L"",WS_BORDER|WS_VSCROLL|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT|LBS_OWNERDRAWFIXED|LBS_HASSTRINGS,kChatList);
         ctx->chatFont=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
         if(ctx->chatFont){SendMessageW(ctx->chatList,WM_SETFONT,reinterpret_cast<WPARAM>(ctx->chatFont),TRUE);SendMessageW(ctx->history,WM_SETFONT,reinterpret_cast<WPARAM>(ctx->chatFont),TRUE);}
@@ -578,7 +591,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             ShowWindow(ctx->previews[i],SW_HIDE);ShowWindow(ctx->removes[i],SW_HIDE);
         }
         ctx->send=Control(window,L"BUTTON",Tr(ctx,L"Отправить",L"Send"),BS_PUSHBUTTON,kSend);
-        if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config||!ctx->chatList||!ctx->mcp||!ctx->attach)return -1;
+        if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config||!ctx->chatList||!ctx->mcp||!ctx->attach||!ctx->showAll||!ctx->showEditor||!ctx->deleteChat)return -1;
         if(!SetWindowSubclass(ctx->input,InputProc,1,reinterpret_cast<DWORD_PTR>(ctx)))return -1;
         ctx->ready=false;ctx->busy=false;UpdateControls(ctx);
         ctx->bridge=StartBridge(window,moduleHandle,Workspace(ctx->owner),selectedClaude,ctx->russian);
@@ -606,6 +619,19 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if(msg==WM_COMMAND && ctx){
         UINT id=LOWORD(w);HWND source=reinterpret_cast<HWND>(l);
         if(id==kSettings && source==ctx->config){OpenSettings(ctx,window);return 0;}
+        if((id==kShowAll && source==ctx->showAll) || (id==kShowEditor && source==ctx->showEditor)){
+            ctx->allChats=id==kShowAll;SendMessageW(ctx->showAll,BM_SETCHECK,ctx->allChats?BST_CHECKED:BST_UNCHECKED,0);SendMessageW(ctx->showEditor,BM_SETCHECK,ctx->allChats?BST_UNCHECKED:BST_CHECKED,0);RenderChats(ctx);return 0;
+        }
+        if(id==kDeleteChat && source==ctx->deleteChat && ctx->ready && !ctx->busy){
+            int row=static_cast<int>(SendMessageW(ctx->chatList,LB_GETCURSEL,0,0));
+            if(row<0 || static_cast<size_t>(row)>=ctx->chatRows.size() || ctx->selectedId.empty() || ctx->chatRows[row]!=L"t"+ctx->selectedId)return 0;
+            auto chat=std::find_if(ctx->chats.begin(),ctx->chats.end(),[&](const ChatItem& item){return item.id==ctx->selectedId;});
+            if(chat==ctx->chats.end())return 0;
+            auto message=std::wstring(Tr(ctx,L"Удалить чат навсегда? Это также удалит дочерние чаты.\n\n",L"Delete this chat permanently? Its child chats will also be deleted.\n\n"))+chat->title;
+            if(MessageBoxW(window,message.c_str(),Tr(ctx,L"Удаление чата",L"Delete chat"),MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)==IDYES)
+                if(!SendBridge(ctx->bridge,"delete",{ctx->selectedId}))SetWindowTextW(ctx->status,Tr(ctx,L"Ошибка связи",L"Connection error"));
+            return 0;
+        }
         if(id==kAttach && source==ctx->attach && !ctx->busy){ChooseImage(ctx);return 0;}
         if(id>=kRemoveImageBase && id<kRemoveImageBase+kMaxImages && source==ctx->removes[id-kRemoveImageBase] && !ctx->busy){RemoveImage(ctx,id-kRemoveImageBase);return 0;}
         if(id==kSend && source==ctx->send){
@@ -621,7 +647,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             int i=static_cast<int>(SendMessageW(source,LB_GETCURSEL,0,0));if(i<0 || static_cast<size_t>(i)>=ctx->chatRows.size())return 0;
             auto key=ctx->chatRows[i];if(key==L"n"){SendBridge(ctx->bridge,"new");ctx->selectedId.clear();}
             else if(key[0]==L't')SendBridge(ctx->bridge,"open",{key.substr(1)});
-            else if(key[0]==L'g'){auto group=key.substr(1);auto found=std::find(ctx->collapsedGroups.begin(),ctx->collapsedGroups.end(),group);if(found==ctx->collapsedGroups.end())ctx->collapsedGroups.push_back(group);else ctx->collapsedGroups.erase(found);RenderChats(ctx);}return 0;
+            else if(key[0]==L'g'){auto group=key.substr(1);auto found=std::find(ctx->collapsedGroups.begin(),ctx->collapsedGroups.end(),group);if(found==ctx->collapsedGroups.end())ctx->collapsedGroups.push_back(group);else ctx->collapsedGroups.erase(found);RenderChats(ctx);}UpdateControls(ctx);return 0;
         }
         if(id==kModel && source==ctx->model && HIWORD(w)==CBN_SELCHANGE){int i=static_cast<int>(SendMessageW(source,CB_GETCURSEL,0,0));if(i>=0 && static_cast<size_t>(i)<ctx->modelIds.size())SendBridge(ctx->bridge,"model",{ctx->modelIds[i]});return 0;}
         if(source==ctx->aiToolbar){
