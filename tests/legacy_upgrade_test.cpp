@@ -8,8 +8,12 @@ static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM owner) {
     if (GetWindow(h,GW_OWNER)!=reinterpret_cast<HWND>(owner)) return TRUE;
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1")) oldWindow=h;
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v2")) newWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2")) oldWindow=h;
+    return TRUE;
+}
+static BOOL CALLBACK FindChild(HWND h,LPARAM) {
+    wchar_t cls[128]{}; GetClassNameW(h,cls,128);
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v3")) newWindow=h;
     return TRUE;
 }
 int wmain(int argc,wchar_t**argv) {
@@ -31,17 +35,18 @@ int wmain(int argc,wchar_t**argv) {
     auto attach=reinterpret_cast<Attach>(GetProcAddress(current,"SC2AI_Attach"));
     auto detach=reinterpret_cast<Detach>(GetProcAddress(current,"SC2AI_Detach"));
     if(!oldAttach||!oldDetach||!attach||!detach||!oldAttach(bar,1,500))return 7;
+    TBBUTTON before{}; if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&before)))return 15;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));
     EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));
     if(!IsWindow(oldWindow))return 8;
     HWND previous=oldWindow;
     if(!attach(bar,1,500))return 9;
-    oldWindow=nullptr;newWindow=nullptr;EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));
-    if(IsWindow(previous)||!IsWindow(newWindow)||!IsZoomed(newWindow)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
+    oldWindow=nullptr;newWindow=nullptr;EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));EnumChildWindows(owner,FindChild,0);
+    if(IsWindow(previous)||!IsWindow(newWindow)||GetParent(newWindow)!=owner||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
     TBBUTTON button{}; if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap<0)return 11;
     if(!detach(bar,500)||IsWindow(newWindow)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 12;
-    if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap!=I_IMAGENONE)return 13;
+    if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap!=before.iBitmap)return 13;
     if(!oldDetach(bar,500)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=2)return 14;
     FreeLibrary(current);FreeLibrary(old);DestroyWindow(owner);ImageList_Destroy(images);
-    std::puts("PASS: legacy button upgraded in place; old window replaced by maximized AI window; legacy restored on detach");return 0;
+    std::puts("PASS: legacy button upgraded in place; window replaced with child panel; legacy restored on detach");return 0;
 }

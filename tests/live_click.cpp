@@ -7,17 +7,25 @@
 static DWORD targetPid;
 static HWND editor, toolbar, aiWindow;
 static const wchar_t* requestedTitle=nullptr;
-static bool legacyOpen=false;
+static int legacyOpen=0;
+static BOOL CALLBACK FindPanel(HWND h,LPARAM) {
+    wchar_t cls[128]{}; GetClassNameW(h,cls,128);
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v3")) aiWindow=h;
+    return TRUE;
+}
 static BOOL CALLBACK Find(HWND h, LPARAM) {
     DWORD pid=0; GetWindowThreadProcessId(h,&pid);
     if (pid!=targetPid) return TRUE;
     wchar_t cls[128]{},title[1024]{}; GetClassNameW(h,cls,128); GetWindowTextW(h,title,1024);
-    if (!lstrcmpW(cls,legacyOpen?L"SC2AIButton.Window.v1":L"SC2AIButton.Window.v2")) aiWindow=h;
+    if (legacyOpen && !lstrcmpW(cls,legacyOpen==1?L"SC2AIButton.Window.v1":L"SC2AIButton.Window.v2")) aiWindow=h;
     if (!lstrcmpW(cls,L"#32770") && wcsstr(title,L" - StarCraft II Editor") &&
         (!requestedTitle || wcsstr(title,requestedTitle)==title)) {
         HWND child=GetDlgItem(h,10); wchar_t childClass[128]{};
         if (child && GetClassNameW(child,childClass,128) && !lstrcmpiW(childClass,TOOLBARCLASSNAMEW) &&
-            SendMessageW(child,TB_COMMANDTOINDEX,60000,0)>=0) { editor=h; toolbar=child; }
+            SendMessageW(child,TB_COMMANDTOINDEX,60000,0)>=0) {
+                editor=h; toolbar=child;
+                if (!legacyOpen) EnumChildWindows(h,FindPanel,0);
+            }
     }
     return TRUE;
 }
@@ -51,7 +59,7 @@ int wmain(int argc,wchar_t**argv) {
     if (argc<4 || argc>6) return 1;
     targetPid=wcstoul(argv[2],nullptr,10);
     if (argc>=5) requestedTitle=argv[4];
-    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open");
+    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open")?1:(!lstrcmpW(argv[5],L"legacy-v2-open")?2:0);
     HDESK desk=OpenDesktopW(argv[1],0,FALSE,DESKTOP_ENUMERATE|DESKTOP_READOBJECTS);
     if (!desk || !SetThreadDesktop(desk)) { std::printf("desktop error %lu\n",GetLastError());return 2; }
     EnumDesktopWindows(desk,Find,0);
@@ -72,8 +80,21 @@ int wmain(int argc,wchar_t**argv) {
     if (!SendMessageTimeoutW(toolbar,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result) ||
         !SendMessageTimeoutW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result)) return 6;
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
-    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) || (!legacyOpen && !IsZoomed(aiWindow)) || GetWindow(aiWindow,GW_OWNER)!=editor) { std::puts("AI window not opened with the expected state");return 7; }
+    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) ||
+        (legacyOpen ? GetWindow(aiWindow,GW_OWNER)!=editor : GetParent(aiWindow)!=editor)) { std::puts("AI window not opened with the expected state");return 7; }
     if (legacyOpen) { std::puts("PASS: legacy AI window open for upgrade test");return 0; }
+    RECT barRect{},panelRect{}; GetWindowRect(toolbar,&barRect);GetWindowRect(aiWindow,&panelRect);
+    if (panelRect.top<barRect.bottom || panelRect.right<=panelRect.left || panelRect.bottom<=panelRect.top) { std::puts("AI panel overlaps toolbar or is empty");return 11; }
+    RECT ownerPanel=panelRect,ownerBar=barRect;
+    MapWindowPoints(nullptr,editor,reinterpret_cast<POINT*>(&ownerPanel),2);
+    MapWindowPoints(nullptr,editor,reinterpret_cast<POINT*>(&ownerBar),2);
+    POINT workspace{ownerPanel.left+100,ownerPanel.top+100};
+    POINT toolbarPoint{ownerBar.left+10,(ownerBar.top+ownerBar.bottom)/2};
+    if (ChildWindowFromPointEx(editor,workspace,CWP_SKIPINVISIBLE)!=aiWindow ||
+        ChildWindowFromPointEx(editor,toolbarPoint,CWP_SKIPINVISIBLE)!=toolbar) {
+        std::puts("AI panel is not above workspace siblings, or it obscures the toolbar");return 12;
+    }
+    swprintf_s(image,L"%ls\\editor-with-ai.bmp",argv[3]); Capture(editor,image);
     swprintf_s(image,L"%ls\\ai-window.bmp",argv[3]); Capture(aiWindow,image);
     HWND first=aiWindow;
     SendMessageW(toolbar,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));SendMessageW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y));
@@ -85,6 +106,6 @@ int wmain(int argc,wchar_t**argv) {
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
     if (!IsWindow(aiWindow)) return 10;
     SendMessageW(aiWindow,WM_CLOSE,0,0);
-    std::printf("PASS: actual Editor toolbar mouse messages open, reuse, close and reopen AI window\n");
+    std::printf("PASS: Editor toolbar opens and reopens AI panel below the visible toolbar\n");
     return 0;
 }
