@@ -24,7 +24,7 @@ function mapPrompt(text){
   const map=mapContext.path
     ? `Документ этого окна SC2 Editor: ${JSON.stringify(mapContext.path)}. ${mapContext.inferred?'Путь восстановлен по сокращённому заголовку и истории редактора; проверь привязку к окну через MCP. ':''}${mapContext.dirty?'В редакторе есть несохранённые изменения; сохранённый файл может отличаться.':'Это путь к сохранённому файлу; наличие несохранённых изменений необходимо проверять в редакторе.'}`
     : `Точный путь открытой карты не определён (заголовок: ${JSON.stringify(mapContext.caption)}). Не выбирай другую карту по догадке; попроси точный путь.`;
-  return `[Контекст SC2 Editor]\n${map}\nОкно редактора: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Работай с этой картой по умолчанию. Файлы рабочей папки можно редактировать напрямую по запросу пользователя. SC2 MCP может быть настроен на другую рабочую папку: не считай её текущей картой. Найди и включи через modkit.tools/modkit.enable_tools инструменты live.windows и live.connect, если они доступны, и используй путь и windowId этого редактора для подключения; учитывай сохранение и ограничения MCP. Если live API отсутствует или привязка не подтверждена, сообщи об этом. Не утверждай, что изменения применены к открытому редактору, пока это не проверено.\n\n[Сообщение пользователя]\n${text}`;
+  return `[Контекст SC2 Editor]\n${map}\nEditor identity: windowId=${JSON.stringify(mapContext.windowId)}, processId=${JSON.stringify(mapContext.processId)}. Work on this map by default. The MCP workspace may point elsewhere; do not treat it as the current map. Author map content through MCP. For a connectivity-only test, discover/enable live.windows and live.capabilities or live.memory.capabilities through modkit.tools/modkit.enable_tools, then inspect them read-only. Do not ask the user to save or call live.connect merely to test connectivity; an unsaved document is not a connection failure. For requested direct-memory Unit scalar edits, discover live.memory.read/set and select the matching Data window from the same process/document, even if this panel belongs to Terrain. These tools accept unsaved document values and do not require live.connect. They currently support existing map-local Unit numeric fields only, not live Terrain, triggers or object creation. If live.memory.* is absent, report the unavailable/stale MCP connection or profile and reconnect it to the updated server; saving will not expose missing tools. live.connect is ONLY the separately selected saved-checkpoint workflow, which imports a private copy and requires a saved file. Use the explicit map path and exact window/process identity; do not infer unsupported capabilities or silently replace either workflow. Preserve unsaved work, user dialogs and uncertain results. Do not claim a memory edit was applied until native value readback confirms it. A title/history path match alone is not authoritative in-memory document binding.\n\n[Сообщение пользователя]\n${text}`;
 }
 const claudeDirs=new Map();
 // Membership belongs to this extension and must not modify Codex desktop state
@@ -36,6 +36,7 @@ function isEditorChat(kind,id){return !!id&&existsSync(marker(kind,id));}
 function markEditorChat(kind,id){mkdirSync(stateDir,{recursive:true});try{writeFileSync(marker(kind,id),'',{flag:'wx'});}catch(e){if(e.code!=='EEXIST')throw e;}}
 function forgetEditorChat(kind,id){try{unlinkSync(marker(kind,id));}catch(e){if(e.code!=='ENOENT')throw e;}}
 let codex, claude, aborter, nextApproval = 1, questionRequest = null, loginId = null; const approvals = new Map();
+let sectionPromise=null;const sectionMoves=new Set();
 function findCodex(){
   if(process.env.SC2_AI_CODEX_PATH && existsSync(process.env.SC2_AI_CODEX_PATH))return process.env.SC2_AI_CODEX_PATH;
   const root=path.join(process.env.LOCALAPPDATA || '', 'OpenAI','Codex','bin');
@@ -51,7 +52,7 @@ class AppServer{
     this.proc.on('error',e=>this.failed(tr('Не удалось запустить Codex: ','Could not start Codex: ')+e.message));
     this.proc.on('exit',()=>this.failed(tr('Codex app-server завершил работу.','Codex app-server exited.')));
   }
-  failed(message){if(this.closed)return;this.ready=false;for(const p of this.pending.values())p.reject(Error(message));this.pending.clear();if(provider==='codex')emit('error',message);}
+  failed(message){if(this.closed)return;this.ready=false;sectionPromise=null;for(const p of this.pending.values())p.reject(Error(message));this.pending.clear();if(provider==='codex')emit('error',message);}
   send(msg){if(!this.proc.stdin.destroyed)this.proc.stdin.write(JSON.stringify(msg)+'\n');}
   request(method,params={}){return new Promise((resolve,reject)=>{const id=this.id++;this.pending.set(id,{resolve,reject});this.send({id,method,params});setTimeout(()=>{if(this.pending.delete(id))reject(Error(tr('Нет ответа от Codex: ','No response from Codex: ')+method));},30000).unref();});}
   onLine(line){let m;try{m=JSON.parse(line)}catch{return;}
@@ -99,6 +100,24 @@ class AppServer{
   async start(){await this.request('initialize',{clientInfo:{name:'sc2_editor_ai',title:'SC2 Editor AI',version:'0.8.0'},capabilities:{}});this.send({method:'initialized',params:{}});this.ready=true;}
   close(){this.closed=true;try{this.proc.stdin.end();this.proc.kill()}catch{}}
 }
+async function ensureEditorSection(){
+  if(!sectionPromise){
+    const server=codex;
+    sectionPromise=(async()=>{
+      let cursor=null;
+      do{const page=await server.request('threadSection/list',{limit:100,cursor});const section=(page.data||[]).find(s=>s.name==='IN_EDITOR');if(section?.id)return section.id;cursor=page.nextCursor||null;}while(cursor);
+      const created=await server.request('threadSection/create',{name:'IN_EDITOR'});if(!created.section?.id)throw Error('Missing section ID');return created.section.id;
+    })().catch(e=>{sectionPromise=null;throw e;});
+  }
+  return sectionPromise;
+}
+function syncEditorSection(id){
+  if(!id||sectionMoves.has(id))return;sectionMoves.add(id);
+  const server=codex;
+  ensureEditorSection().then(sectionId=>server.request('thread/section/move',{threadId:id,sectionId})).catch(()=>{
+    if(server===codex && provider==='codex')emit('event',tr('Не удалось синхронизировать чат с разделом IN_EDITOR в Codex; повторим позже','Could not sync the chat to IN_EDITOR in Codex; will retry later'));
+  }).finally(()=>sectionMoves.delete(id));
+}
 function askNext(){
   if(!questionRequest)return;
   const q=questionRequest.questions[questionRequest.index];
@@ -131,7 +150,7 @@ async function listCodex(gen=generation){
   };
   emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){const project=isEditorChat('codex',t.id)?{id:editorGroup,name:'IN_EDITOR',color:'blue'}:findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
+    for(const t of r.data||[]){const marked=isEditorChat('codex',t.id),inSection=t.section?.name==='IN_EDITOR';if(marked && !t.section)syncEditorSection(t.id);const project=(marked||inSection)?{id:editorGroup,name:'IN_EDITOR',color:'blue'}:findProject(t);emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'',project?.id||'',project?.name||'',project?.color||'');count++;}cursor=r.nextCursor;
   }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
 function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
@@ -166,11 +185,12 @@ function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
-  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;if(process.env.SC2_AI_TEST_EPHEMERAL!=='1')markEditorChat('codex',selected);emit('selected',selected);await listCodex();}
+  let createdHere=false;
+  if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;if(process.env.SC2_AI_TEST_EPHEMERAL!=='1'){markEditorChat('codex',selected);createdHere=true;}emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
-  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});emit('accepted');if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});emit('accepted');if(createdHere)syncEditorSection(selected);if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
   if(!codexPath)return undefined;
