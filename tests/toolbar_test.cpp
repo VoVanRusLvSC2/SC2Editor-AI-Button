@@ -8,7 +8,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM owner) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v2") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -31,22 +31,24 @@ int wmain() {
         !attach(toolbar, 1, 500) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 3 ||
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 500, 0) != 1 ||
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 2 || detach(toolbar, 100)) return 5;
+    TBBUTTON ai{};
+    if (!SendMessageW(toolbar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&ai)) || ai.iBitmap<0) return 11;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
-    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow)) return 6;
+    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) || !IsZoomed(aiWindow)) return 6;
     HWND first=aiWindow;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
-    if (first!=aiWindow || !IsWindow(first)) return 7;
+    if (first!=aiWindow || !IsWindow(first) || !IsZoomed(first)) return 7;
     SendMessageW(first,WM_CLOSE,0,0);
     if (IsWindow(first)) return 8;
     aiWindow=nullptr;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
-    if (!IsWindow(aiWindow)) return 9;
+    if (!IsWindow(aiWindow) || !IsZoomed(aiWindow)) return 9;
     if (!detach(toolbar, 500) || IsWindow(aiWindow) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 2 ||
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 1) return 5;
     FreeLibrary(module);
     DestroyWindow(parent);
-    std::puts("PASS: insertion, click opens owned window, repeat/close/reopen, removal");
+    std::puts("PASS: image button and maximized owned window, repeat/close/reopen, removal");
     return 0;
 }

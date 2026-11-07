@@ -7,11 +7,12 @@
 static DWORD targetPid;
 static HWND editor, toolbar, aiWindow;
 static const wchar_t* requestedTitle=nullptr;
+static bool legacyOpen=false;
 static BOOL CALLBACK Find(HWND h, LPARAM) {
     DWORD pid=0; GetWindowThreadProcessId(h,&pid);
     if (pid!=targetPid) return TRUE;
     wchar_t cls[128]{},title[1024]{}; GetClassNameW(h,cls,128); GetWindowTextW(h,title,1024);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1")) aiWindow=h;
+    if (!lstrcmpW(cls,legacyOpen?L"SC2AIButton.Window.v1":L"SC2AIButton.Window.v2")) aiWindow=h;
     if (!lstrcmpW(cls,L"#32770") && wcsstr(title,L" - StarCraft II Editor") &&
         (!requestedTitle || wcsstr(title,requestedTitle)==title)) {
         HWND child=GetDlgItem(h,10); wchar_t childClass[128]{};
@@ -47,9 +48,10 @@ static bool Capture(HWND window,const wchar_t* file) {
     DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(nullptr,screen);return ok;
 }
 int wmain(int argc,wchar_t**argv) {
-    if (argc!=4 && argc!=5) return 1;
+    if (argc<4 || argc>6) return 1;
     targetPid=wcstoul(argv[2],nullptr,10);
-    if (argc==5) requestedTitle=argv[4];
+    if (argc>=5) requestedTitle=argv[4];
+    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open");
     HDESK desk=OpenDesktopW(argv[1],0,FALSE,DESKTOP_ENUMERATE|DESKTOP_READOBJECTS);
     if (!desk || !SetThreadDesktop(desk)) { std::printf("desktop error %lu\n",GetLastError());return 2; }
     EnumDesktopWindows(desk,Find,0);
@@ -70,7 +72,8 @@ int wmain(int argc,wchar_t**argv) {
     if (!SendMessageTimeoutW(toolbar,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result) ||
         !SendMessageTimeoutW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result)) return 6;
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
-    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) || GetWindow(aiWindow,GW_OWNER)!=editor) { std::puts("AI window not opened by mouse message");return 7; }
+    if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) || (!legacyOpen && !IsZoomed(aiWindow)) || GetWindow(aiWindow,GW_OWNER)!=editor) { std::puts("AI window not opened with the expected state");return 7; }
+    if (legacyOpen) { std::puts("PASS: legacy AI window open for upgrade test");return 0; }
     swprintf_s(image,L"%ls\\ai-window.bmp",argv[3]); Capture(aiWindow,image);
     HWND first=aiWindow;
     SendMessageW(toolbar,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));SendMessageW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y));

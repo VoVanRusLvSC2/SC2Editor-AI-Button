@@ -13,7 +13,7 @@ $output = Join-Path $PSScriptRoot 'build'
 New-Item -ItemType Directory -Force $output | Out-Null
 Push-Location $output
 try {
-    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib gdi32.lib
     if ($LASTEXITCODE) { throw 'DLL build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT /DUNICODE /D_UNICODE (Join-Path $PSScriptRoot 'src\loader.cpp') /Fe:SC2AILoader.exe user32.lib version.lib
     if ($LASTEXITCODE) { throw 'Loader build failed.' }
@@ -25,6 +25,8 @@ try {
     if ($LASTEXITCODE) { throw 'Live test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\switch_module.cpp') /Fe:switch_module.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Module-switch test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /MT (Join-Path $PSScriptRoot 'tests\legacy_upgrade_test.cpp') /Fe:legacy_upgrade_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Legacy upgrade test build failed.' }
     & .\toolbar_test.exe
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
 } finally { Pop-Location }

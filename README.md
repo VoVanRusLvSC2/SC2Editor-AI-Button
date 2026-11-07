@@ -1,9 +1,10 @@
 # SC2 Editor AI Button
 
 An experimental Windows x64 extension for the original StarCraft II Editor.
-It adds an **AI** button near the end of the Editor's module toolbar, before the
-SC2 button. The button opens an empty owned window titled **AI**. Clicking it
-again brings the existing window forward; closing it allows it to be reopened.
+It adds a white-and-blue **AI** icon the same size as the Editor's other toolbar
+buttons, before the SC2 button. The button opens an empty maximized owned window
+titled **AI**. Clicking it again brings the window forward at full size; closing
+it allows it to be reopened.
 There is no chat or MCP integration yet.
 
 ## Use
@@ -32,7 +33,7 @@ then runs the isolated toolbar/window test. `package.ps1` creates a ZIP in `dist
 
 Live validation is separate: on an isolated Editor 5.0.17.98310 and a disposable
 map, the button was inserted into the original Terrain and Triggers toolbars,
-and mouse messages opened, closed and reopened the owned AI window. The Editor's
+and mouse messages opened, closed and reopened the maximized AI window. The Editor's
 other builds, toolbar arrangements, scaling settings and all modules are not
 yet exhaustively validated.
 
