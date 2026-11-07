@@ -2,11 +2,13 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v36"))newWindow=h;return TRUE;}
 int wmain(int argc,wchar_t**argv){
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(argc!=2)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,900,600,nullptr,nullptr,nullptr,nullptr);
     HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|WS_VISIBLE|TBSTYLE_FLAT,0,0,900,30,owner,nullptr,nullptr,nullptr);if(!owner||!bar)return 3;

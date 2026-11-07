@@ -1,10 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include "../src/editor_window.h"
 #include <cstdio>
+#include "test_desktop.h"
 #pragma pack(push,2)
 struct DialogTemplate { DLGTEMPLATE dialog;WORD menu,windowClass,title; };
 #pragma pack(pop)
 int wmain(){
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 1;
     DialogTemplate t{};t.dialog.style=WS_POPUP|WS_CAPTION;t.dialog.cx=300;t.dialog.cy=200;
     HWND owner=CreateDialogIndirectParamW(GetModuleHandleW(nullptr),&t.dialog,nullptr,nullptr,0);if(!owner)return 2;

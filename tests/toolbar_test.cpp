@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 #include <initializer_list>
 
 using Attach = BOOL (WINAPI*)(HWND, int, UINT);
@@ -13,6 +14,7 @@ static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     return TRUE;
 }
 int wmain() {
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     INITCOMMONCONTROLSEX common{sizeof(common), ICC_BAR_CLASSES};
     if (!InitCommonControlsEx(&common)) return 1;
     HWND parent = CreateWindowExW(0, L"STATIC", L"test", WS_OVERLAPPEDWINDOW,

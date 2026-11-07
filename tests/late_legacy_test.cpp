@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND legacy,latest;
@@ -9,6 +10,7 @@ static BOOL CALLBACK Find(HWND h,LPARAM owner){wchar_t cls[128]{};GetClassNameW(
     if(!lstrcmpW(cls,L"SC2AIButton.Window.v6") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner))legacy=h;
     if(!lstrcmpW(cls,L"SC2AIButton.Window.v36") && !GetWindow(h,GW_OWNER))latest=h;return TRUE;}
 int wmain(int argc,wchar_t** argv){
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(argc!=3)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"Import test",WS_OVERLAPPEDWINDOW,-30000,-30000,700,500,nullptr,nullptr,nullptr,nullptr);
     HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|TBSTYLE_FLAT,0,0,700,30,owner,nullptr,nullptr,nullptr);if(!owner||!bar)return 3;ShowWindow(owner,SW_SHOWNOACTIVATE);

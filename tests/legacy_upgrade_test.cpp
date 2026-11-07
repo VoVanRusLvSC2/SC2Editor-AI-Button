@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
@@ -18,6 +19,7 @@ static BOOL CALLBACK FindChild(HWND h,LPARAM) {
     return TRUE;
 }
 int wmain(int argc,wchar_t**argv) {
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(argc!=2) return 1;
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES}; if(!InitCommonControlsEx(&common)) return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,500,180,nullptr,nullptr,nullptr,nullptr);

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 #include <cwchar>
 #include "../src/editor_locale.h"
 #include "../src/locales_generated.h"
@@ -10,6 +11,7 @@ using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND ai;
 static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v36"))ai=h;return TRUE;}
 int wmain(){
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(EditorLocaleFromVariables("\xEF\xBB\xBFlocaleiddata=zhTW\r\n")!=L"zhTW" ||
        EditorLocaleFromVariables("localeiddata=esMX\n")!=L"esMX" ||
        NormalizeEditorLocale(L"enGB")!=L"enUS" || NormalizeEditorLocale(L"ptPT")!=L"ptBR" ||

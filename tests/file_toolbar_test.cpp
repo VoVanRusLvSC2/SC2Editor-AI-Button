@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <cstdio>
+#include "test_desktop.h"
 #include <cwchar>
 
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
@@ -14,6 +15,7 @@ static LRESULT CALLBACK OwnerProc(HWND h,UINT msg,WPARAM w,LPARAM l){
 }
 static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v36"))ai=h;return TRUE;}
 int wmain(){
+    if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 1;
     WNDCLASSW cls{};cls.lpfnWndProc=OwnerProc;cls.hInstance=GetModuleHandleW(nullptr);cls.lpszClassName=L"SC2AI.FileToolbarTest";if(!RegisterClassW(&cls))return 2;
     HWND owner=CreateWindowExW(0,cls.lpszClassName,L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,900,600,nullptr,nullptr,cls.hInstance,nullptr);if(!owner)return 3;
