@@ -1,17 +1,41 @@
-# SC2 Editor AI Button — experimental
+# SC2 Editor AI Button
 
-An early Windows x64 DLL prototype for a future AI button in StarCraft II Editor.
-The current DLL inserts an `AI` text button into a caller-supplied Win32 toolbar.
-It has been designed for an isolated toolbar test; **it does not yet locate or
-attach to the SC2 Editor**. It has no loader or chat, and does not edit maps.
+An experimental Windows x64 extension for the original StarCraft II Editor.
+It adds an **AI** button near the end of the Editor's module toolbar, before the
+SC2 button. The button opens an empty owned window titled **AI**. Clicking it
+again brings the existing window forward; closing it allows it to be reopened.
+There is no chat or MCP integration yet.
 
-Build and run the isolated test with `powershell -ExecutionPolicy Bypass -File .\build.ps1`.
-The build needs Visual Studio C++ x64 tools and the Windows SDK. The build output
-is in `build/` and is not committed.
+## Use
 
-The caller must load the DLL in the toolbar's process, invoke `SC2AI_Attach` on
-the toolbar's UI thread, supply the insertion index and an unused 16-bit command
-ID, then call `SC2AI_Detach` on the same thread before unloading the DLL. The
-toolbar owner receives the usual command notification on a click. The exports do
-not identify the correct editor window, choose the command ID, or route clicks.
-These integration steps and editor version compatibility remain unverified.
+1. Run the original 64-bit StarCraft II Editor and open a map.
+2. Extract the release ZIP to a folder you control.
+3. Run `Start AI Button.cmd`. The DLL and loader must remain in the same folder.
+4. Click **AI** in the Editor toolbar. Re-run the launcher after restarting the Editor.
+
+The launcher loads the DLL into the running Editor process; no game files are
+modified. The DLL remains loaded until that Editor exits. The supported Editor
+version is **5.0.17.98310 x64**. An unrecognized version or toolbar layout fails
+without inserting a button. If several visible Editor processes are running,
+select one explicitly in a console with `SC2AILoader.exe --pid <process-id>`.
+
+This is an experimental extension. The AI window is a separate owned window,
+not a dockable native Editor module. If the Editor toolbar is too narrow, its
+usual overflow behavior may hide buttons. Make a backup of important work and
+test with a disposable map before using it for real editing.
+
+## Build and verify
+
+Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` with Visual Studio C++
+x64 tools and the Windows SDK installed. It builds the DLL, launcher and tests,
+then runs the isolated toolbar/window test. `package.ps1` creates a ZIP in `dist`.
+
+Live validation is separate: on an isolated Editor 5.0.17.98310 and a disposable
+map, the button was inserted into the original Terrain and Triggers toolbars,
+and mouse messages opened, closed and reopened the owned AI window. The Editor's
+other builds, toolbar arrangements, scaling settings and all modules are not
+yet exhaustively validated.
+
+The DLL exports `SC2AI_Attach`, `SC2AI_Detach`, `SC2AI_Start` and `SC2AI_Status`.
+Direct attach/detach calls must execute on the toolbar's UI thread; the shipped
+launcher initializes the DLL and lets it locate compatible Editor toolbars.
