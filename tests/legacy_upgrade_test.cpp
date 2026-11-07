@@ -8,8 +8,8 @@ static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM owner) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
     if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2") || !lstrcmpW(cls,L"SC2AIButton.Window.v4") || !lstrcmpW(cls,L"SC2AIButton.Window.v5") || !lstrcmpW(cls,L"SC2AIButton.Window.v6")) { if(GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner))oldWindow=h; }
-    if ((!lstrcmpW(cls,L"SC2AIButton.Window.v7") || !lstrcmpW(cls,L"SC2AIButton.Window.v8") || !lstrcmpW(cls,L"SC2AIButton.Window.v9") || !lstrcmpW(cls,L"SC2AIButton.Window.v10") || !lstrcmpW(cls,L"SC2AIButton.Window.v11") || !lstrcmpW(cls,L"SC2AIButton.Window.v12") || !lstrcmpW(cls,L"SC2AIButton.Window.v13") || !lstrcmpW(cls,L"SC2AIButton.Window.v14") || !lstrcmpW(cls,L"SC2AIButton.Window.v15") || !lstrcmpW(cls,L"SC2AIButton.Window.v16") || !lstrcmpW(cls,L"SC2AIButton.Window.v17") || !lstrcmpW(cls,L"SC2AIButton.Window.v18") || !lstrcmpW(cls,L"SC2AIButton.Window.v19") || !lstrcmpW(cls,L"SC2AIButton.Window.v20") || !lstrcmpW(cls,L"SC2AIButton.Window.v21")) && !GetWindow(h,GW_OWNER))oldWindow=h;
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v22")) newWindow=h;
+    if ((!lstrcmpW(cls,L"SC2AIButton.Window.v7") || !lstrcmpW(cls,L"SC2AIButton.Window.v8") || !lstrcmpW(cls,L"SC2AIButton.Window.v9") || !lstrcmpW(cls,L"SC2AIButton.Window.v10") || !lstrcmpW(cls,L"SC2AIButton.Window.v11") || !lstrcmpW(cls,L"SC2AIButton.Window.v12") || !lstrcmpW(cls,L"SC2AIButton.Window.v13") || !lstrcmpW(cls,L"SC2AIButton.Window.v14") || !lstrcmpW(cls,L"SC2AIButton.Window.v15") || !lstrcmpW(cls,L"SC2AIButton.Window.v16") || !lstrcmpW(cls,L"SC2AIButton.Window.v17") || !lstrcmpW(cls,L"SC2AIButton.Window.v18") || !lstrcmpW(cls,L"SC2AIButton.Window.v19") || !lstrcmpW(cls,L"SC2AIButton.Window.v20") || !lstrcmpW(cls,L"SC2AIButton.Window.v21") || !lstrcmpW(cls,L"SC2AIButton.Window.v22")) && !GetWindow(h,GW_OWNER))oldWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v23")) newWindow=h;
     return TRUE;
 }
 static BOOL CALLBACK FindChild(HWND h,LPARAM) {
@@ -44,7 +44,7 @@ int wmain(int argc,wchar_t**argv) {
     if(!IsWindow(oldWindow))return 8;
     HWND previous=oldWindow;
     wchar_t oldClass[128]{};GetClassNameW(oldWindow,oldClass,128);
-    if(!lstrcmpW(oldClass,L"SC2AIButton.Window.v21")){
+    if(!lstrcmpW(oldClass,L"SC2AIButton.Window.v21") || !lstrcmpW(oldClass,L"SC2AIButton.Window.v22")){
         for(int i=0;i<300 && !IsWindowEnabled(GetDlgItem(oldWindow,107));++i){MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}Sleep(50);}
         if(!IsWindowEnabled(GetDlgItem(oldWindow,107)))return 16;
         SetWindowTextW(GetDlgItem(oldWindow,107),L"unsent draft");

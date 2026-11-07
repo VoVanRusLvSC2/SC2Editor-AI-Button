@@ -13,12 +13,14 @@ $output = Join-Path $PSScriptRoot 'build'
 New-Item -ItemType Directory -Force $output | Out-Null
 Push-Location $output
 try {
-    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') (Join-Path $PSScriptRoot 'src\bridge_client.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib gdi32.lib gdiplus.lib crypt32.lib shell32.lib advapi32.lib comdlg32.lib
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE /LD (Join-Path $PSScriptRoot 'src\ai_button.cpp') (Join-Path $PSScriptRoot 'src\bridge_client.cpp') (Join-Path $PSScriptRoot 'src\image_attachment.cpp') /Fe:SC2AIButton.dll user32.lib comctl32.lib gdi32.lib gdiplus.lib crypt32.lib shell32.lib advapi32.lib comdlg32.lib oleacc.lib oleaut32.lib ole32.lib
     if ($LASTEXITCODE) { throw 'DLL build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT /DUNICODE /D_UNICODE (Join-Path $PSScriptRoot 'src\loader.cpp') /Fe:SC2AILoader.exe user32.lib version.lib
     if ($LASTEXITCODE) { throw 'Loader build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\toolbar_test.cpp') /Fe:toolbar_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\file_toolbar_test.cpp') /Fe:file_toolbar_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'File toolbar test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\editor_window_test.cpp') /Fe:editor_window_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Editor window test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\map_context_test.cpp') /Fe:map_context_test.exe user32.lib advapi32.lib
@@ -57,6 +59,8 @@ try {
     if ($LASTEXITCODE) { throw 'Multi-version upgrade test build failed.' }
     & .\toolbar_test.exe
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
+    & .\file_toolbar_test.exe
+    if ($LASTEXITCODE) { throw 'File toolbar test failed.' }
     & .\editor_window_test.exe
     if ($LASTEXITCODE) { throw 'Editor window test failed.' }
     & .\map_context_test.exe

@@ -11,6 +11,8 @@ An experimental Windows x64 extension for StarCraft II Editor 5.0.17.98310. It a
 
 Press **Enter** to send a message, or **Shift+Enter** to insert a new line.
 
+The AI toolbar exposes the Editor's New, Open, and Save commands, identified by the standard Ctrl+N, Ctrl+O, and Ctrl+S labels on the native toolbar. Their availability follows the native Editor; custom shortcuts or inaccessible labels may prevent discovery.
+
 Game installation and user paths are discovered locally, and module windows are identified independently of their caption language. The executable version and toolbar layout are checked to avoid attaching to unsupported builds. Native tests have run on Windows 11 x64; automated builds also run on Windows Server 2022 and 2025. This does not establish compatibility with every Windows version, UI scale, or Editor language. Chats require compatible Node.js and Codex or Claude installations.
 
 The DLL is loaded into the running Editor without modifying the game installation. If several Editors are open, run `SC2AILoader.exe --pid <id>`. AI is a separate extension window, not a registered native Editor module.
