@@ -8,7 +8,7 @@ using Detach=BOOL (WINAPI*)(HWND,UINT);
 struct Module { HMODULE h;Attach attach;Detach detach; };
 static HWND oldPanel,newPanel,version21Panel,version22Panel,version23Panel;
 static BOOL CALLBACK Child(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v3"))oldPanel=h;return TRUE;}
-static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v36") && !GetWindow(h,GW_OWNER))newPanel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v21") && !GetWindow(h,GW_OWNER))version21Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v22") && !GetWindow(h,GW_OWNER))version22Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v23") && !GetWindow(h,GW_OWNER))version23Panel=h;return TRUE;}
+static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v37") && !GetWindow(h,GW_OWNER))newPanel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v21") && !GetWindow(h,GW_OWNER))version21Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v22") && !GetWindow(h,GW_OWNER))version22Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v23") && !GetWindow(h,GW_OWNER))version23Panel=h;return TRUE;}
 int wmain(int argc,wchar_t**argv) {
     if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(argc!=24)return 1;

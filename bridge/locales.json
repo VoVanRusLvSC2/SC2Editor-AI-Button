@@ -108,7 +108,19 @@
     "Actions": "Aktionen",
     "Copy code": "Code kopieren",
     "Editor chat": "Editor-Chat",
-    "Contents": "Inhalt"
+    "Contents": "Inhalt",
+    "View changes": "Änderungen ansehen",
+    "Undo change": "Änderung rückgängig machen",
+    "undone": "rückgängig gemacht",
+    "The file changed after this response. Undo was cancelled.": "Die Datei wurde nach dieser Antwort geändert. Das Rückgängigmachen wurde abgebrochen.",
+    "Could not safely undo the file change.": "Die Dateiänderung konnte nicht sicher rückgängig gemacht werden.",
+    "Select a Codex chat.": "Codex-Chat auswählen.",
+    "Change undone: ": "Dateiänderung rückgängig gemacht: ",
+    "Could not save the file changes list": "Die Liste der Dateiänderungen konnte nicht gespeichert werden",
+    "Workspace changes during the reply": "Arbeitsbereichsänderungen während der Antwort",
+    "Select a chat.": "Chat auswählen.",
+    "Could not process the file changes. Check that Git is installed.": "Dateiänderungen konnten nicht verarbeitet werden. Prüfen Sie die Git-Installation.",
+    "Message AI…": "Nachricht an AI…"
   },
   "esES": {
     "Disconnected": "desconectado",
@@ -219,7 +231,19 @@
     "Actions": "Acciones",
     "Copy code": "Copiar código",
     "Editor chat": "Chat del editor",
-    "Contents": "Contenido"
+    "Contents": "Contenido",
+    "View changes": "Ver cambios",
+    "Undo change": "Deshacer cambio",
+    "undone": "deshecho",
+    "The file changed after this response. Undo was cancelled.": "El archivo cambió después de esta respuesta. Se canceló la operación.",
+    "Could not safely undo the file change.": "No se pudo deshacer el cambio de forma segura.",
+    "Select a Codex chat.": "Selecciona un chat de Codex.",
+    "Change undone: ": "Cambio deshecho: ",
+    "Could not save the file changes list": "No se pudo guardar la lista de cambios",
+    "Workspace changes during the reply": "Cambios en la carpeta durante la respuesta",
+    "Select a chat.": "Selecciona un chat.",
+    "Could not process the file changes. Check that Git is installed.": "No se pudieron procesar los cambios. Comprueba que Git esté instalado.",
+    "Message AI…": "Mensaje para AI…"
   },
   "ptBR": {
     "Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion.": "Não foi possível anexar a imagem. Use PNG, JPEG, GIF ou BMP até 7 MB após a conversão.",
@@ -330,7 +354,19 @@
     "Actions": "Ações",
     "Copy code": "Copiar código",
     "Editor chat": "Chat do editor",
-    "Contents": "Sumário"
+    "Contents": "Sumário",
+    "View changes": "Ver alterações",
+    "Undo change": "Desfazer alteração",
+    "undone": "desfeito",
+    "The file changed after this response. Undo was cancelled.": "O arquivo mudou após esta resposta. A reversão foi cancelada.",
+    "Could not safely undo the file change.": "Não foi possível desfazer a alteração com segurança.",
+    "Select a Codex chat.": "Selecione um chat do Codex.",
+    "Change undone: ": "Alteração desfeita: ",
+    "Could not save the file changes list": "Não foi possível salvar a lista de alterações",
+    "Workspace changes during the reply": "Alterações na pasta durante a resposta",
+    "Select a chat.": "Selecione um chat.",
+    "Could not process the file changes. Check that Git is installed.": "Não foi possível processar as alterações. Verifique se o Git está instalado.",
+    "Message AI…": "Mensagem para AI…"
   },
   "frFR": {
     " (from editor history)": " (extrait de l'historique de l'éditeur)",
@@ -441,7 +477,19 @@
     "Actions": "Actions",
     "Copy code": "Copier le code",
     "Editor chat": "Chat de l’éditeur",
-    "Contents": "Sommaire"
+    "Contents": "Sommaire",
+    "View changes": "Voir les modifications",
+    "Undo change": "Annuler la modification",
+    "undone": "annulé",
+    "The file changed after this response. Undo was cancelled.": "Le fichier a changé après cette réponse. Annulation interrompue.",
+    "Could not safely undo the file change.": "Impossible d’annuler la modification en toute sécurité.",
+    "Select a Codex chat.": "Sélectionnez un chat Codex.",
+    "Change undone: ": "Modification annulée : ",
+    "Could not save the file changes list": "Impossible d’enregistrer la liste des modifications",
+    "Workspace changes during the reply": "Modifications du dossier pendant la réponse",
+    "Select a chat.": "Sélectionnez un chat.",
+    "Could not process the file changes. Check that Git is installed.": "Impossible de traiter les modifications. Vérifiez que Git est installé.",
+    "Message AI…": "Message à AI…"
   },
   "itIT": {
     "Open Claude Console": "Apri la console Claude",
@@ -552,7 +600,19 @@
     "Actions": "Azioni",
     "Copy code": "Copia codice",
     "Editor chat": "Chat dell’editor",
-    "Contents": "Sommario"
+    "Contents": "Sommario",
+    "View changes": "Mostra modifiche",
+    "Undo change": "Annulla modifica",
+    "undone": "annullato",
+    "The file changed after this response. Undo was cancelled.": "Il file è cambiato dopo questa risposta. Annullamento interrotto.",
+    "Could not safely undo the file change.": "Impossibile annullare la modifica in sicurezza.",
+    "Select a Codex chat.": "Seleziona una chat Codex.",
+    "Change undone: ": "Modifica annullata: ",
+    "Could not save the file changes list": "Impossibile salvare la lista delle modifiche",
+    "Workspace changes during the reply": "Modifiche alla cartella durante la risposta",
+    "Select a chat.": "Seleziona una chat.",
+    "Could not process the file changes. Check that Git is installed.": "Impossibile elaborare le modifiche. Verifica che Git sia installato.",
+    "Message AI…": "Messaggio per AI…"
   },
   "koKR": {
     "Open Claude Console": "Claude 콘솔 열기",
@@ -663,7 +723,19 @@
     "Actions": "작업",
     "Copy code": "코드 복사",
     "Editor chat": "편집기 채팅",
-    "Contents": "목차"
+    "Contents": "목차",
+    "View changes": "변경 사항 보기",
+    "Undo change": "변경 취소",
+    "undone": "취소됨",
+    "The file changed after this response. Undo was cancelled.": "이 응답 이후 파일이 변경되어 실행 취소를 중단했습니다.",
+    "Could not safely undo the file change.": "파일 변경을 안전하게 취소할 수 없습니다.",
+    "Select a Codex chat.": "Codex 채팅을 선택하세요.",
+    "Change undone: ": "변경 취소됨: ",
+    "Could not save the file changes list": "파일 변경 목록을 저장하지 못했습니다",
+    "Workspace changes during the reply": "응답 중 작업 폴더의 변경 사항",
+    "Select a chat.": "채팅을 선택하세요.",
+    "Could not process the file changes. Check that Git is installed.": "파일 변경을 처리하지 못했습니다. Git이 설치되어 있는지 확인하세요.",
+    "Message AI…": "AI에게 메시지 보내기…"
   },
   "plPL": {
     "Open Claude Console": "Otwórz konsolę Claude",
@@ -774,7 +846,19 @@
     "Actions": "Działania",
     "Copy code": "Kopiuj kod",
     "Editor chat": "Czat edytora",
-    "Contents": "Spis treści"
+    "Contents": "Spis treści",
+    "View changes": "Zobacz zmiany",
+    "Undo change": "Cofnij zmianę",
+    "undone": "cofnięto",
+    "The file changed after this response. Undo was cancelled.": "Plik zmienił się po tej odpowiedzi. Cofanie anulowano.",
+    "Could not safely undo the file change.": "Nie można bezpiecznie cofnąć zmiany pliku.",
+    "Select a Codex chat.": "Wybierz czat Codex.",
+    "Change undone: ": "Cofnięto zmianę: ",
+    "Could not save the file changes list": "Nie udało się zapisać listy zmian plików",
+    "Workspace changes during the reply": "Zmiany folderu podczas odpowiedzi",
+    "Select a chat.": "Wybierz czat.",
+    "Could not process the file changes. Check that Git is installed.": "Nie można przetworzyć zmian plików. Sprawdź instalację Git.",
+    "Message AI…": "Wiadomość do AI…"
   },
   "zhCN": {
     "Open Claude Console": "打开Claude控制台",
@@ -885,7 +969,19 @@
     "Actions": "操作",
     "Copy code": "复制代码",
     "Editor chat": "编辑器聊天",
-    "Contents": "目录"
+    "Contents": "目录",
+    "View changes": "查看更改",
+    "Undo change": "撤销更改",
+    "undone": "已撤销",
+    "The file changed after this response. Undo was cancelled.": "文件在此回复后发生了更改，已取消撤销。",
+    "Could not safely undo the file change.": "无法安全撤销文件更改。",
+    "Select a Codex chat.": "请选择 Codex 聊天。",
+    "Change undone: ": "已撤销更改：",
+    "Could not save the file changes list": "无法保存文件更改列表",
+    "Workspace changes during the reply": "回复期间工作区中的更改",
+    "Select a chat.": "请选择聊天。",
+    "Could not process the file changes. Check that Git is installed.": "无法处理文件更改，请检查是否已安装 Git。",
+    "Message AI…": "给 AI 发送消息…"
   },
   "zhTW": {
     " (from editor history)": " （取自編輯歷史）",
@@ -996,7 +1092,19 @@
     "Actions": "操作",
     "Copy code": "複製程式碼",
     "Editor chat": "編輯器聊天",
-    "Contents": "目錄"
+    "Contents": "目錄",
+    "View changes": "查看變更",
+    "Undo change": "復原變更",
+    "undone": "已復原",
+    "The file changed after this response. Undo was cancelled.": "檔案在此回覆後已變更，已取消復原。",
+    "Could not safely undo the file change.": "無法安全復原檔案變更。",
+    "Select a Codex chat.": "請選擇 Codex 聊天。",
+    "Change undone: ": "已復原變更：",
+    "Could not save the file changes list": "無法儲存檔案變更清單",
+    "Workspace changes during the reply": "回覆期間工作區中的變更",
+    "Select a chat.": "請選擇聊天。",
+    "Could not process the file changes. Check that Git is installed.": "無法處理檔案變更，請檢查是否已安裝 Git。",
+    "Message AI…": "傳送訊息給 AI…"
   },
   "esMX": {
     "Disconnected": "desconectado",
@@ -1107,6 +1215,18 @@
     "Actions": "Acciones",
     "Copy code": "Copiar código",
     "Editor chat": "Chat del editor",
-    "Contents": "Contenido"
+    "Contents": "Contenido",
+    "View changes": "Ver cambios",
+    "Undo change": "Deshacer cambio",
+    "undone": "deshecho",
+    "The file changed after this response. Undo was cancelled.": "El archivo cambió después de esta respuesta. Se canceló la operación.",
+    "Could not safely undo the file change.": "No se pudo deshacer el cambio de forma segura.",
+    "Select a Codex chat.": "Selecciona un chat de Codex.",
+    "Change undone: ": "Cambio deshecho: ",
+    "Could not save the file changes list": "No se pudo guardar la lista de cambios",
+    "Workspace changes during the reply": "Cambios en la carpeta durante la respuesta",
+    "Select a chat.": "Selecciona un chat.",
+    "Could not process the file changes. Check that Git is installed.": "No se pudieron procesar los cambios. Comprueba que Git esté instalado.",
+    "Message AI…": "Mensaje para AI…"
   }
 }

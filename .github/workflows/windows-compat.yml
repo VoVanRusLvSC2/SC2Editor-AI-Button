@@ -25,3 +25,14 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node tests/bridge_test.mjs ru
           exit $LASTEXITCODE
+      - name: Test change tracking and safe undo
+        shell: pwsh
+        run: |
+          node tests/file_changes_test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/file_changes_bridge_test.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/file_changes_bridge_test.mjs --no-diff
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/file_changes_bridge_test.mjs --claude
+          exit $LASTEXITCODE

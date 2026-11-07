@@ -1,12 +1,14 @@
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {existsSync, readdirSync, statSync, readFileSync, mkdirSync, writeFileSync, unlinkSync} from 'node:fs';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 import {createMcpFreshener} from './mcp_refresh.mjs';
 import {chatTitle,compactTitle,firstUserTitle,isContextTitle} from './chat_titles.mjs';
+import {recordTurnDiff,listChanges,changeDiff,revertChange,workspaceRoot} from './file_changes.mjs';
+import {snapshotWorkspace,observedDiff} from './workspace_snapshot.mjs';
 
 // A private stdio channel connects this process only to the editor extension.
 // Data fields are base64-encoded UTF-8; stdout never contains debug output.
@@ -93,10 +95,11 @@ class AppServer{
     }
     if(provider!=='codex')return;
     const p=m.params || {};if(p.threadId && p.threadId!==selected)return;
+    if(m.method==='turn/diff/updated' && running?.provider==='codex' && (!running.turnId || running.turnId===p.turnId)){running.diff=p.diff;running.diffTurnId=p.turnId;}
     if(m.method==='item/agentMessage/delta')emit('delta',p.delta||'');
     if(m.method==='item/started' && p.item?.type==='mcpToolCall')emit('event',`MCP: ${p.item.server} / ${p.item.tool}`);
     if(m.method==='item/started' && p.item?.type==='commandExecution')emit('event',tr('Выполняется команда','Running a command'));
-    if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);if(turn.error?.message)emit('error',turn.error.message);listCodex(generation).catch(e=>emit('error',e.message));}
+    if(m.method==='turn/completed'){const completed=running;const turn=p.turn||{};finishCodexTurn(completed,turn).catch(e=>{running=null;emit('busy','0');emit('error',e.message);});}
     if(m.method==='error' && p.error?.message)emit('error',p.error.message);
   }
   // Forward supported approval and input requests to the window. Explicitly reject unsupported
@@ -249,7 +252,8 @@ function displayUserText(text,count){return tr('Вы: ','You: ')+text+(count?'\n
 async function sendCodex(text,images){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   if(await codex.refreshMcp())emit('event',tr('Запрошено обновление MCP перед ответом; возможности проверяются инструментами','MCP refresh queued before the turn; inspect tools for actual capabilities'));
-  const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
+  const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;running.cwd=turnCwd;
+  try{running.root=workspaceRoot(turnCwd);running.snapshot=await snapshotWorkspace(turnCwd);}catch{}
   let createdHere=false;
   if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true}:{})});selected=r.thread.id;const title=compactTitle(text);if(title)editorTitles.set(selected,title);if(process.env.SC2_AI_TEST_EPHEMERAL!=='1'){markEditorChat('codex',selected);createdHere=true;}emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
@@ -315,6 +319,8 @@ async function sendClaude(text,images){
   let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||(mapContext.path?path.dirname(mapContext.path):cwd),abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
     ...(current?{resume:current}:{}),...(model?{model}:{}),...(sc2Config()?{mcpServers:sc2Config()}:{}),
     canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:tr('Отклонено пользователем','Declined by user')}));emit('approval',id,`${tr('Запрос Claude','Claude request')}: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
+  let before,root;try{root=workspaceRoot(options.cwd);before=await snapshotWorkspace(options.cwd);}catch{}
+  const changeTurn=randomUUID();
   const content=mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.'));
   async function* imagePrompt(){yield {type:'user',message:{role:'user',content:[...images.map(image=>({type:'image',source:{type:'base64',media_type:'image/png',data:image.bytes.toString('base64')}})),{type:'text',text:content}]},parent_tool_use_id:null};}
   let accepted=false;try{for await(const message of claude.query({prompt:images.length?imagePrompt():content,options})){
@@ -323,11 +329,40 @@ async function sendClaude(text,images){
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
     if(message.type==='result' && message.is_error){failed=true;emit('error',(message.errors||[]).join('\n')||tr('Claude завершился с ошибкой.','Claude returned an error.'));}
-  }if(!failed)emit('status',tr('Готово','Ready'));await listClaude();}finally{running=null;aborter=null;emit('busy','0');}
+  }if(!failed)emit('status',tr('Готово','Ready'));await listClaude();}finally{
+    try{if(before && root && selected){const after=await snapshotWorkspace(options.cwd),diff=observedDiff(root,before,after);if(diff){if(recordTurnDiff(stateDir,changeThread(),changeTurn,options.cwd,diff).length)emitChanges();else emit('event',tr('Не удалось обработать изменения файлов. Проверьте установку Git.','Could not process the file changes. Check that Git is installed.'));}}}
+    catch{emit('event',tr('Не удалось сохранить список изменений файлов','Could not save the file changes list'));}
+    running=null;aborter=null;emit('busy','0');
+  }
 }
 // Clear the selection and advance generation when switching providers so old asynchronous
 // results cannot overwrite the new state.
-async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status',tr('Подключение...','Connecting...'));emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
+async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('changes_begin');emit('changes_end');emit('threads_begin');emit('threads_end');emit('status',tr('Подключение...','Connecting...'));emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
+// Shell commands do not always emit structured file changes. Compare a bounded set of text
+// files from before/after the turn as a fallback; no other files or open map memory are tracked.
+async function finishCodexTurn(completed,turn){
+  if(completed?.provider==='codex' && completed.cwd && turn.id){
+    try{
+      let diff=completed.diffTurnId===turn.id?(completed.diff||''):'';
+      if(completed.snapshot && completed.root){const after=await snapshotWorkspace(completed.cwd);diff+=observedDiff(completed.root,completed.snapshot,after);}
+      if(diff){if(recordTurnDiff(stateDir,changeThread(),turn.id,completed.cwd,diff).length)emitChanges();else emit('event',tr('Не удалось обработать изменения файлов. Проверьте установку Git.','Could not process the file changes. Check that Git is installed.'));}
+    }catch{emit('event',tr('Не удалось сохранить список изменений файлов','Could not save the file changes list'));}
+  }
+  running=null;emit('busy','0');emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);
+  if(turn.error?.message)emit('error',turn.error.message);listCodex(generation).catch(e=>emit('error',e.message));
+}
+// Only supported text-file changes have locally recorded undo information.
+
+function changeThread(){return provider+':'+selected;}
+function emitChanges(){
+  emit('changes_begin');
+  if(selected)for(const item of listChanges(stateDir,changeThread()))emit('change',item.id,item.path,String(item.added),String(item.removed),item.reverted?'1':'0');
+  emit('changes_end');
+}
+function changesError(error){
+  if(/changed after this response/.test(error.message))return tr('Файл изменился после ответа. Откат отменён.','The file changed after this response. Undo was cancelled.');
+  return tr('Не удалось безопасно откатить изменение файла.','Could not safely undo the file change.');
+}
 // Dispatch C++ window commands for providers, chats, models, sign-in, messages, stopping and
 // interactive answers.
 async function handle(line){const [cmd,...args]=line.split('\t');const a=args.map(un64);
@@ -356,8 +391,18 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
       if(gen===generation && provider===deletingProvider && selected===id){selected='';emit('clear');emit('selected','');deletingProvider==='codex'?await listCodex(gen):await listClaude(gen);}
     }finally{running=null;emit('busy','0');}
   }
-  else if(cmd==='open'){if(running)throw Error(tr('Остановите ответ перед выбором чата.','Stop the response before selecting a chat.'));selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
-  else if(cmd==='new'){if(running)throw Error(tr('Остановите текущий ответ.','Stop the current response first.'));selected='';generation++;emit('clear');emit('selected','');}
+  else if(cmd==='open'){if(running)throw Error(tr('Остановите ответ перед выбором чата.','Stop the response before selecting a chat.'));selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation){emit('selected',selected);emitChanges();}}
+  else if(cmd==='new'){if(running)throw Error(tr('Остановите текущий ответ.','Stop the current response first.'));selected='';generation++;emit('clear');emit('selected','');emitChanges();}
+  else if(cmd==='change_view'){
+    if(!selected)throw Error(tr('Выберите чат.','Select a chat.'));
+    const diff=changeDiff(stateDir,changeThread(),a[0]);emit('change_diff',selected,a[0],diff.slice(0,200000));
+  }
+  else if(cmd==='change_undo'){
+    if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));
+    if(!selected)throw Error(tr('Выберите чат.','Select a chat.'));
+    try{const file=revertChange(stateDir,changeThread(),a[0]);emit('event',tr('Изменение отменено: ','Change undone: ')+file);emitChanges();}
+    catch(error){emit('error',changesError(error));}
+  }
   else if(cmd==='model')model=a[0];
   else if(cmd==='answer' && questionRequest){const q=questionRequest.questions[questionRequest.index++];questionRequest.answers[q.id]={answers:[a[0]||'']};askNext();}
   else if(cmd==='send'){if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));const images=loadAttachedImages(a.slice(1).filter(Boolean));if(!a[0]?.trim()&&!images.length)return;provider==='codex'?await sendCodex(a[0]||'',images):await sendClaude(a[0]||'',images);}
@@ -366,6 +411,6 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
 }
 // Read commands until the pipe closes. Report an already-active chat separately and decline
 // pending approvals on exit.
-createInterface({input:process.stdin}).on('line',line=>{handle(line).catch(e=>{running=null;emit('busy','0');const message=e.message||String(e);emit('error',/already has an active writer/i.test(message)?tr('Этот чат занят другим процессом Codex. Продолжите его там или освободите чат и повторите. Текст и вложения сохранены.','This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.'):message);});}).on('close',()=>{for(const f of approvals.values())f(false);aborter?.abort();codex?.close();process.exit(0);});
+createInterface({input:process.stdin}).on('line',line=>{handle(line).catch(e=>{if(!line.startsWith('change_')){running=null;emit('busy','0');}const message=e.message||String(e);emit('error',/already has an active writer/i.test(message)?tr('Этот чат занят другим процессом Codex. Продолжите его там или освободите чат и повторите. Текст и вложения сохранены.','This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.'):message);});}).on('close',()=>{for(const f of approvals.values())f(false);aborter?.abort();codex?.close();process.exit(0);});
 process.on('uncaughtException',e=>emit('error',e.message||String(e)));
 connect(process.argv[3]==='claude'?'claude':'codex').catch(e=>emit('error',e.message||String(e)));

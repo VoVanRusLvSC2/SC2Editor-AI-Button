@@ -6,8 +6,9 @@
 #include <cstdio>
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
-static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v36"))ai=h;return TRUE;}
+static HWND ai,diffWindow;
+static BOOL CALLBACK FindDiff(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Diff.v37"))diffWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v37"))ai=h;return TRUE;}
 struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
 static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
 static DWORD WINAPI SelectFirstOutline(void* raw){
@@ -45,6 +46,21 @@ int wmain(){
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai)return 8;
     auto event=[&](const char* kind,std::vector<std::wstring> fields={}){auto e=new BridgeEvent{nullptr,kind,fields};SendMessageW(ai,WM_AI_BRIDGE,0,reinterpret_cast<LPARAM>(e));};
     HWND edit=GetDlgItem(ai,105);
+    HWND composer=GetDlgItem(ai,107),changes=GetDlgItem(ai,124),placeholder=GetDlgItem(ai,125);RECT smallRect{},largeRect{},shrunkRect{};
+    if(!placeholder || !(GetWindowLongPtrW(placeholder,GWL_STYLE)&WS_VISIBLE))return 46;
+    SendMessageW(composer,WM_SETFOCUS,0,0);if(GetWindowLongPtrW(placeholder,GWL_STYLE)&WS_VISIBLE)return 47;
+    SendMessageW(composer,WM_KILLFOCUS,0,0);if(!(GetWindowLongPtrW(placeholder,GWL_STYLE)&WS_VISIBLE))return 48;
+    GetWindowRect(composer,&smallRect);SetWindowTextW(composer,L"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));GetWindowRect(composer,&largeRect);
+    if(largeRect.bottom-largeRect.top<=smallRect.bottom-smallRect.top || (GetWindowLongPtrW(placeholder,GWL_STYLE)&WS_VISIBLE))return 40;
+    SetWindowTextW(composer,L"");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));GetWindowRect(composer,&shrunkRect);if(shrunkRect.bottom-shrunkRect.top!=smallRect.bottom-smallRect.top)return 41;
+    if(!changes || IsWindowEnabled(changes))return 42;
+    event("changes_begin");event("change",{L"change-id",L"example.txt",L"2",L"1",L"0"});event("changes_end");
+    if(!IsWindowEnabled(changes))return 43;
+    event("selected",{L"test-thread"});event("change_diff",{L"test-thread",L"change-id",L"--- a/test\n+++ b/test\n-old\n+new\n"});
+    EnumThreadWindows(GetCurrentThreadId(),FindDiff,0);HWND diffText=GetDlgItem(diffWindow,1);
+    if(!IsWindow(diffWindow) || GetWindowTextLengthW(diffText)<20 || !(GetWindowLongPtrW(diffText,GWL_STYLE)&ES_READONLY))return 45;
+    DestroyWindow(diffWindow);
+    event("clear");if(IsWindowEnabled(changes))return 44;
     LOGFONTW inputFont{};auto font=reinterpret_cast<HFONT>(SendMessageW(GetDlgItem(ai,107),WM_GETFONT,0,0));
     if(!font || GetObjectW(font,sizeof(inputFont),&inputFont)!=sizeof(inputFont) || inputFont.lfHeight>-15)return 27;
     auto check=[&](const wchar_t* text,COLORREF expected){

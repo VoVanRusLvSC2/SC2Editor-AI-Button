@@ -7,7 +7,7 @@ static DWORD pid; static HWND source,ai,aiBar,data;
 static BOOL CALLBACK Find(HWND h,LPARAM){
  DWORD p=0;GetWindowThreadProcessId(h,&p);if(p!=pid)return TRUE;
  wchar_t cls[128]{},title[1024]{};GetClassNameW(h,cls,128);GetWindowTextW(h,title,1024);
- if(!lstrcmpW(cls,L"SC2AIButton.Window.v36")){ai=h;aiBar=GetDlgItem(h,100);}
+ if(!lstrcmpW(cls,L"SC2AIButton.Window.v37")){ai=h;aiBar=GetDlgItem(h,100);}
  if(!lstrcmpW(cls,L"#32770")){
   if(!wcsncmp(title,L"Terrain - ",10))source=GetDlgItem(h,10);
   if(!wcsncmp(title,L"Data - ",7) && IsWindowVisible(h))data=h;
