@@ -7,7 +7,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v28"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v29"))ai=h;return TRUE;}
 static bool SavePreview(HWND window,const wchar_t* path){
     RECT r{};if(!GetWindowRect(window,&r))return false;int width=r.right-r.left,height=r.bottom-r.top;if(width<=0 || height<=0)return false;
     BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
@@ -64,8 +64,10 @@ int wmain(){
     if(!check(L"[Command]",RGB(104,113,123))){std::printf("action click failed: x=%ld y=%ld start=%ld end=%ld mask=%lld\n",point.x,point.y,action.chrgText.cpMin,action.chrgText.cpMax,static_cast<long long>(SendMessageW(edit,EM_GETEVENTMASK,0,0)));return 14;}
     event("line",{L"AI: "});event("delta",{L"streamed **text"});event("delta",{L"**"});SendMessageW(ai,WM_TIMER,2,0);
     if(!check(L"streamed text",RGB(0,105,170)))return 10;
-    RECT input{},model{};GetWindowRect(GetDlgItem(ai,107),&input);GetWindowRect(GetDlgItem(ai,110),&model);
-    if(model.left!=input.left || model.top<input.bottom)return 15;
+    RECT input{},model{},attachRect{},sendRect{};GetWindowRect(GetDlgItem(ai,107),&input);GetWindowRect(GetDlgItem(ai,110),&model);
+    GetWindowRect(GetDlgItem(ai,119),&attachRect);GetWindowRect(GetDlgItem(ai,108),&sendRect);
+    if(attachRect.left!=input.left || model.top<input.bottom || attachRect.right>model.left || model.right>sendRect.left || sendRect.right>input.right)return 15;
+    for(int id:{108,109,119,120,121,122})if((GetWindowLongPtrW(GetDlgItem(ai,id),GWL_STYLE)&BS_TYPEMASK)!=BS_OWNERDRAW)return 26;
     event("clear");event("line",{L"AI: "});event("delta",{L"before action"});
     event("event",{L"MCP: sc2editor / first"});event("event",{L"MCP: sc2editor / second"});event("delta",{L"after action"});SendMessageW(ai,WM_TIMER,2,0);
     if(!check(L"before action",RGB(0,105,170)) || !check(L"after action",RGB(0,105,170)) || check(L"MCP: sc2editor / first",RGB(104,113,123)))return 24;

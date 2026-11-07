@@ -9,7 +9,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v28") && !GetWindow(h,GW_OWNER)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v29") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -62,7 +62,7 @@ int wmain() {
     if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 20;
 
     SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
-    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v28",nullptr);
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v29",nullptr);
     if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102) || !GetDlgItem(settings,118))return 16;
     SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
     wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);

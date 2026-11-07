@@ -7,7 +7,7 @@ using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND legacy,latest;
 static BOOL CALLBACK Find(HWND h,LPARAM owner){wchar_t cls[128]{};GetClassNameW(h,cls,128);
     if(!lstrcmpW(cls,L"SC2AIButton.Window.v6") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner))legacy=h;
-    if(!lstrcmpW(cls,L"SC2AIButton.Window.v28") && !GetWindow(h,GW_OWNER))latest=h;return TRUE;}
+    if(!lstrcmpW(cls,L"SC2AIButton.Window.v29") && !GetWindow(h,GW_OWNER))latest=h;return TRUE;}
 int wmain(int argc,wchar_t** argv){
     if(argc!=3)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"Import test",WS_OVERLAPPEDWINDOW,-30000,-30000,700,500,nullptr,nullptr,nullptr,nullptr);
