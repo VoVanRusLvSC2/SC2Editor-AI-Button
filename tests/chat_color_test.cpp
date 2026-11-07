@@ -7,7 +7,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v32"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v33"))ai=h;return TRUE;}
 static bool SavePreview(HWND window,const wchar_t* path){
     RECT r{};if(!GetWindowRect(window,&r))return false;int width=r.right-r.left,height=r.bottom-r.top;if(width<=0 || height<=0)return false;
     BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
@@ -46,6 +46,12 @@ int wmain(){
     };
     event("history",{L"You: usertext\r\n\r\nAI: firsttext **boldtext**\r\n\r\nsecondtext\r\n\r\n[bracketed reply]\r\n\r\n[Command]\r\n\r\nAI: thirdtext"});
     if(!check(L"usertext",RGB(35,40,46)) || !check(L"firsttext",RGB(0,105,170)) || !check(L"secondtext",RGB(0,105,170)) || !check(L"[bracketed reply]",RGB(0,105,170)) || !check(L"thirdtext",RGB(0,105,170)) || check(L"[Command]",RGB(104,113,123)))return 9;
+    wchar_t title[256]{};GetWindowTextW(ai,title,256);if(wcsncmp(title,L"AI Assistant - ",15))return 28;
+    RECT before{},after{};GetWindowRect(GetDlgItem(ai,113),&before);MapWindowPoints(HWND_DESKTOP,ai,reinterpret_cast<POINT*>(&before),2);
+    int splitter=before.right+12,y=before.top+40;SendMessageW(ai,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(splitter,y));
+    SendMessageW(ai,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(splitter+100,y));SendMessageW(ai,WM_LBUTTONUP,0,MAKELPARAM(splitter+100,y));
+    GetWindowRect(GetDlgItem(ai,113),&after);MapWindowPoints(HWND_DESKTOP,ai,reinterpret_cast<POINT*>(&after),2);
+    if(after.right-before.right!=100 || !check(L"firsttext",RGB(0,105,170)))return 29;
     FINDTEXTEXW user{};user.chrg.cpMin=0;user.chrg.cpMax=-1;user.lpstrText=const_cast<wchar_t*>(L"usertext");
     if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&user))<0)return 19;
     CHARRANGE userSelection{user.chrgText.cpMin,user.chrgText.cpMin+1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&userSelection));
