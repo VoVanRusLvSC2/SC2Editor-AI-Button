@@ -6,9 +6,9 @@
 using Attach = BOOL (WINAPI*)(HWND, int, UINT);
 using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
-static BOOL CALLBACK FindAI(HWND h, LPARAM owner) {
+static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v6") && GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v7") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -36,18 +36,22 @@ int wmain() {
     if (!SendMessageW(toolbar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&ai)) || ai.iBitmap<0) return 11;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
-    RECT parentArea{},barRect{},panelRect{};
-    GetClientRect(parent,&parentArea);GetWindowRect(toolbar,&barRect);GetWindowRect(aiWindow,&panelRect);
-    MapWindowPoints(parent,nullptr,reinterpret_cast<POINT*>(&parentArea),2);
-    if (!IsWindow(aiWindow) || GetWindow(aiWindow,GW_OWNER)!=parent || !(GetWindowLongPtrW(aiWindow,GWL_STYLE)&WS_VISIBLE) ||
-        panelRect.top!=barRect.bottom || panelRect.right!=parentArea.right || panelRect.bottom!=parentArea.bottom) return 6;
+    HWND aiBar=GetDlgItem(aiWindow,100);
+    if(!IsWindow(aiWindow) || GetWindow(aiWindow,GW_OWNER) || !IsWindowVisible(aiWindow) || !aiBar ||
+       !(GetWindowLongPtrW(aiWindow,GWL_STYLE)&WS_OVERLAPPEDWINDOW) ||
+       !(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED) ||
+       !IsWindow(GetDlgItem(aiWindow,109)) || !IsWindow(GetDlgItem(aiWindow,110)) ||
+       IsWindowEnabled(GetDlgItem(aiWindow,108)))return 6;
+    SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v7",nullptr);
+    if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102))return 16;
+    SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
+    wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);
+    if(lstrcmpW(label,L"Claude"))return 17;
+    SendMessageW(settings,WM_CLOSE,0,0);
     HWND first=aiWindow;
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     if (first!=aiWindow || !IsWindow(first)) return 7;
-    SetWindowPos(parent,nullptr,0,0,650,180,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-    GetClientRect(parent,&parentArea);GetWindowRect(aiWindow,&panelRect);
-    MapWindowPoints(parent,nullptr,reinterpret_cast<POINT*>(&parentArea),2);
-    if (panelRect.right!=parentArea.right || panelRect.bottom!=parentArea.bottom) return 15;
     SendMessageW(first,WM_CLOSE,0,0);
     if (IsWindow(first)) return 8;
     aiWindow=nullptr;
@@ -58,6 +62,6 @@ int wmain() {
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 1) return 5;
     FreeLibrary(module);
     DestroyWindow(parent);
-    std::puts("PASS: image button and owned panel below toolbar, resize, repeat/close/reopen, removal");
+    std::puts("PASS: separate AI window, selected AI, provider selection, close/reopen, removal");
     return 0;
 }

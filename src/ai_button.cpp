@@ -11,24 +11,31 @@ constexpr wchar_t kLegacyProperty2[] = L"SC2AIButton.context.v2";
 constexpr wchar_t kLegacyProperty3[] = L"SC2AIButton.context.v3";
 constexpr wchar_t kLegacyProperty4[] = L"SC2AIButton.context.v4";
 constexpr wchar_t kLegacyProperty5[] = L"SC2AIButton.context.v5";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v6";
+constexpr wchar_t kLegacyProperty6[] = L"SC2AIButton.context.v6";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v7";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
 constexpr wchar_t kLegacyWindowClass4[] = L"SC2AIButton.Window.v4";
 constexpr wchar_t kLegacyWindowClass5[] = L"SC2AIButton.Window.v5";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v6";
+constexpr wchar_t kLegacyWindowClass6[] = L"SC2AIButton.Window.v6";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v7";
 constexpr UINT kCommand = 60000;
 HMODULE moduleHandle = nullptr;
 HHOOK threadHook = nullptr;
 UINT scanMessage = 0;
 volatile LONG started = 0;
 volatile LONG activeButtons = 0;
+HWND currentAIWindow = nullptr;
+bool selectedClaude = false;
 
 struct Context {
     HWND toolbar; HWND owner; HWND window; UINT command;
     int legacy; bool ownsImages; HIMAGELIST images;
     TBBUTTONINFOW original;
+    HWND aiToolbar, codex, claude, heading, status, description, history, input, send;
+    HWND settings, model, config; bool claudeSelected;
+    HIMAGELIST aiImages;
 };
 
 // Draw beveled steel-blue lettering at the toolbar's native image dimensions.
@@ -177,78 +184,208 @@ void ReleaseOwnedImages(Context* ctx) {
     ImageList_Destroy(ctx->images); ctx->images=nullptr;
 }
 
-LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
-    if (msg == WM_CREATE) {
-        auto cs = reinterpret_cast<CREATESTRUCTW*>(l);
-        auto ctx = static_cast<Context*>(cs->lpCreateParams);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(ctx));
-        ctx->window = window;
-        CreateWindowExW(0,L"BUTTON",L"\x00d7",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
-            0,0,32,26,window,reinterpret_cast<HMENU>(1),moduleHandle,nullptr);
-        return 0;
-    }
-    if (msg == WM_SIZE) {
-        HWND close=GetDlgItem(window,1);
-        if (close) SetWindowPos(close,nullptr,LOWORD(l)>40?LOWORD(l)-38:0,4,32,26,SWP_NOZORDER|SWP_NOACTIVATE);
-        return 0;
-    }
-    if (msg == WM_COMMAND && LOWORD(w)==1) { DestroyWindow(window); return 0; }
-    if (msg == WM_PAINT) {
-        PAINTSTRUCT paint{}; HDC dc=BeginPaint(window,&paint);
-        RECT area{}; GetClientRect(window,&area);
-        RECT heading{12,0,area.right-44,34}; SetBkMode(dc,TRANSPARENT);
-        DrawTextW(dc,L"AI",2,&heading,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
-        HPEN pen=CreatePen(PS_SOLID,1,GetSysColor(COLOR_3DLIGHT));
-        if (pen) { auto old=SelectObject(dc,pen); MoveToEx(dc,0,34,nullptr); LineTo(dc,area.right,34); SelectObject(dc,old); DeleteObject(pen); }
-        EndPaint(window,&paint); return 0;
-    }
-    if (msg == WM_CLOSE) { DestroyWindow(window); return 0; }
-    if (msg == WM_NCDESTROY) {
-        auto ctx = reinterpret_cast<Context*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        if (ctx) ctx->window = nullptr;
-    }
-    return DefWindowProcW(window, msg, w, l);
+enum : int { kToolbar=100, kCodex=101, kClaude=102, kHeading=103,
+             kStatus=104, kDescription=105, kHistory=106, kInput=107, kSend=108,
+             kSettings=109, kModel=110 };
+
+HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int id) {
+    HWND child=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,0,0,0,0,
+        parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),moduleHandle,nullptr);
+    if(child) SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+    return child;
 }
 
-void LayoutWindow(Context* ctx) {
-    if (!IsWindow(ctx->window) || !IsWindow(ctx->owner) || !IsWindow(ctx->toolbar)) return;
-    if (IsIconic(ctx->owner) || !IsWindowVisible(ctx->owner)) { ShowWindow(ctx->window,SW_HIDE); return; }
-    RECT area{},bar{};
-    if (!GetClientRect(ctx->owner,&area) || !GetWindowRect(ctx->toolbar,&bar)) return;
-    MapWindowPoints(ctx->owner,nullptr,reinterpret_cast<POINT*>(&area),2);
-    int top=bar.bottom<area.top?area.top:bar.bottom;
-    if (top>area.bottom) top=area.bottom;
-    SetWindowPos(ctx->window,HWND_TOP,area.left,top,area.right-area.left,area.bottom-top,SWP_NOACTIVATE|SWP_SHOWWINDOW);
+void SelectProvider(Context* ctx,bool claude) {
+    ctx->claudeSelected=claude;selectedClaude=claude;
+    if(IsWindow(ctx->codex))SendMessageW(ctx->codex,BM_SETCHECK,claude?BST_UNCHECKED:BST_CHECKED,0);
+    if(IsWindow(ctx->claude))SendMessageW(ctx->claude,BM_SETCHECK,claude?BST_CHECKED:BST_UNCHECKED,0);
+    SetWindowTextW(ctx->heading,claude?L"Claude":L"Codex");
+    SetWindowTextW(ctx->status,L"Не подключён");
+    SetWindowTextW(ctx->description,claude?
+        L"Здесь появится переписка с Claude после подключения.":
+        L"Здесь появится переписка с Codex после подключения.");
+}
+LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
+    auto ctx=reinterpret_cast<Context*>(GetWindowLongPtrW(window,GWLP_USERDATA));
+    if(msg==WM_CREATE){
+        auto cs=reinterpret_cast<CREATESTRUCTW*>(l);ctx=static_cast<Context*>(cs->lpCreateParams);
+        SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(ctx));ctx->settings=window;
+        HWND label=Control(window,L"STATIC",L"Выберите помощника:",SS_LEFT,111);
+        ctx->codex=Control(window,L"BUTTON",L"Codex",BS_AUTORADIOBUTTON|WS_GROUP,kCodex);
+        ctx->claude=Control(window,L"BUTTON",L"Claude",BS_AUTORADIOBUTTON,kClaude);
+        HWND note=Control(window,L"STATIC",L"Подключение помощников пока разрабатывается.",SS_LEFT,112);
+        if(!label||!ctx->codex||!ctx->claude||!note)return -1;
+        MoveWindow(label,20,20,330,24,TRUE);MoveWindow(ctx->codex,20,54,150,26,TRUE);
+        MoveWindow(ctx->claude,20,86,150,26,TRUE);MoveWindow(note,20,130,340,35,TRUE);
+        SelectProvider(ctx,ctx->claudeSelected);return 0;
+    }
+    if(msg==WM_COMMAND && ctx && (LOWORD(w)==kCodex || LOWORD(w)==kClaude)){
+        SelectProvider(ctx,LOWORD(w)==kClaude);return 0;
+    }
+    if(msg==WM_CLOSE){DestroyWindow(window);return 0;}
+    if(msg==WM_NCDESTROY && ctx){ctx->settings=nullptr;ctx->codex=nullptr;ctx->claude=nullptr;}
+    return DefWindowProcW(window,msg,w,l);
+}
+void OpenSettings(Context* ctx,HWND owner){
+    if(IsWindow(ctx->settings)){SetForegroundWindow(ctx->settings);return;}
+    WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=SettingsProc;wc.hInstance=moduleHandle;
+    wc.lpszClassName=L"SC2AIButton.Settings.v7";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+    if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
+    RECT r{};GetWindowRect(owner,&r);
+    CreateWindowExW(WS_EX_DLGMODALFRAME,wc.lpszClassName,L"Настройки AI",WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,
+        r.left+40,r.top+40,400,220,owner,nullptr,moduleHandle,ctx);
+}
+
+bool CopyToolbar(Context* ctx,HWND window) {
+    HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|WS_VISIBLE|TBSTYLE_FLAT|CCS_TOP|CCS_NODIVIDER,
+        0,0,0,0,window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kToolbar)),moduleHandle,nullptr);
+    if(!bar)return false;
+    ctx->aiToolbar=bar;
+    SendMessageW(bar,TB_BUTTONSTRUCTSIZE,sizeof(TBBUTTON),0);
+    HIMAGELIST source=reinterpret_cast<HIMAGELIST>(SendMessageW(ctx->toolbar,TB_GETIMAGELIST,0,0));
+    if(source){ctx->aiImages=ImageList_Duplicate(source);if(!ctx->aiImages)return false;
+        SendMessageW(bar,TB_SETIMAGELIST,0,reinterpret_cast<LPARAM>(ctx->aiImages));}
+    int count=static_cast<int>(SendMessageW(ctx->toolbar,TB_BUTTONCOUNT,0,0));
+    int ai=static_cast<int>(SendMessageW(ctx->toolbar,TB_COMMANDTOINDEX,ctx->command,0));
+    if(count<1 || count>150 || ai<0)return false;
+    RECT nativeButton{};
+    int buttonWidth=40,buttonHeight=40;
+    if(SendMessageW(ctx->toolbar,TB_GETITEMRECT,ai,reinterpret_cast<LPARAM>(&nativeButton))){
+        int w=nativeButton.right-nativeButton.left,h=nativeButton.bottom-nativeButton.top;
+        if(w>=20 && w<=80)buttonWidth=w;if(h>=20 && h<=80)buttonHeight=h;
+    }
+    SendMessageW(bar,TB_SETBUTTONSIZE,0,MAKELPARAM(buttonWidth,buttonHeight));
+    for(int i=0;i<count;++i){
+        TBBUTTON b{};if(!SendMessageW(ctx->toolbar,TB_GETBUTTON,i,reinterpret_cast<LPARAM>(&b)))return false;
+        // Only module navigation is meaningful in the AI workspace.
+        if(!(b.fsStyle&BTNS_SEP)){
+            b.iString=-1;b.dwData=0;b.fsStyle&=static_cast<BYTE>(~(BTNS_AUTOSIZE|BTNS_SHOWTEXT));b.fsState&=static_cast<BYTE>(~(TBSTATE_CHECKED|TBSTATE_PRESSED));
+            if(i<ai-9 || i>ai) b.fsState&=static_cast<BYTE>(~TBSTATE_ENABLED);
+            if(i==ai){b.fsStyle=BTNS_CHECK;b.fsState|=TBSTATE_ENABLED|TBSTATE_CHECKED;}
+        }
+        if(!SendMessageW(bar,TB_ADDBUTTONSW,1,reinterpret_cast<LPARAM>(&b)))return false;
+    }
+    SendMessageW(bar,TB_AUTOSIZE,0,0);return true;
+}
+void LayoutControls(Context* ctx,HWND window) {
+    RECT r{};GetClientRect(window,&r);int width=r.right,height=r.bottom;
+    SendMessageW(ctx->aiToolbar,TB_AUTOSIZE,0,0);
+    RECT bar{};GetWindowRect(ctx->aiToolbar,&bar);int top=bar.bottom-bar.top+16;
+    int side=width<700?170:260, mainX=22, mainW=width-side-48;
+    if(mainW<160)mainW=160;
+    int sidebarX=width-side+12;
+    MoveWindow(ctx->heading,mainX,top,150,24,TRUE);
+    MoveWindow(ctx->status,mainX+155,top,120,24,TRUE);
+    int modelX=mainX+290;
+    int modelWidth=mainW-430;if(modelWidth>200)modelWidth=200;if(modelWidth<90)modelWidth=90;
+    MoveWindow(ctx->model,modelX,top-4,modelWidth,200,TRUE);
+    MoveWindow(ctx->config,mainX+mainW-115,top-4,115,30,TRUE);
+    int centerY=top+(height-top)/2-35;if(centerY<top+60)centerY=top+60;
+    MoveWindow(ctx->description,mainX,centerY,mainW,60,TRUE);
+    MoveWindow(ctx->history,sidebarX,top,side-24,80,TRUE);
+    int inputY=height-80;if(inputY<top+140)inputY=top+140;
+    MoveWindow(ctx->input,mainX,inputY,mainW>102?mainW-98:mainW,52,TRUE);
+    MoveWindow(ctx->send,mainX+(mainW>102?mainW-90:0),inputY,90,30,TRUE);
+}
+LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
+    auto ctx=reinterpret_cast<Context*>(GetWindowLongPtrW(window,GWLP_USERDATA));
+    if(msg==WM_CREATE){
+        auto cs=reinterpret_cast<CREATESTRUCTW*>(l);ctx=static_cast<Context*>(cs->lpCreateParams);
+        SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(ctx));ctx->window=window;
+        if(!CopyToolbar(ctx,window))return -1;
+        ctx->heading=Control(window,L"STATIC",L"Codex",SS_LEFT,kHeading);
+        ctx->status=Control(window,L"STATIC",L"",SS_LEFT,kStatus);
+        ctx->description=Control(window,L"STATIC",L"",SS_CENTER,kDescription);
+        ctx->history=Control(window,L"STATIC",L"ЧАТЫ\r\n\r\nСписок появится после подключения",SS_LEFT,kHistory);
+        ctx->model=Control(window,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_DISABLED,kModel);
+        ctx->config=Control(window,L"BUTTON",L"Настройки",BS_PUSHBUTTON,kSettings);
+        if(ctx->model){SendMessageW(ctx->model,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Выбор модели"));SendMessageW(ctx->model,CB_SETCURSEL,0,0);}
+        ctx->input=Control(window,L"EDIT",L"Сообщение будет доступно после подключения",WS_BORDER|ES_MULTILINE|ES_READONLY,kInput);
+        ctx->send=Control(window,L"BUTTON",L"Отправить",BS_PUSHBUTTON|WS_DISABLED,kSend);
+        if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config)return -1;
+        SelectProvider(ctx,selectedClaude);return 0;
+    }
+    if(msg==WM_SIZE && ctx){LayoutControls(ctx,window);return 0;}
+    if(msg==WM_GETMINMAXINFO){auto mm=reinterpret_cast<MINMAXINFO*>(l);mm->ptMinTrackSize.x=900;mm->ptMinTrackSize.y=420;return 0;}
+    if(msg==WM_PAINT){
+        PAINTSTRUCT ps{};HDC dc=BeginPaint(window,&ps);RECT r{};GetClientRect(window,&r);
+        int side=r.right<700?170:260;int divider=r.right-side-3;
+        HPEN pen=CreatePen(PS_SOLID,1,GetSysColor(COLOR_3DLIGHT));
+        if(pen){auto old=SelectObject(dc,pen);MoveToEx(dc,divider,45,nullptr);LineTo(dc,divider,r.bottom);SelectObject(dc,old);DeleteObject(pen);}
+        EndPaint(window,&ps);return 0;
+    }
+    if(msg==WM_CTLCOLORSTATIC){SetBkMode(reinterpret_cast<HDC>(w),TRANSPARENT);return reinterpret_cast<LRESULT>(GetStockObject(WHITE_BRUSH));}
+    if(msg==WM_COMMAND && ctx){
+        UINT id=LOWORD(w);HWND source=reinterpret_cast<HWND>(l);
+        if(id==kSettings && source==ctx->config){OpenSettings(ctx,window);return 0;}
+        if(source==ctx->aiToolbar){
+            if(id==ctx->command)return 0;
+            // Bring the source editor forward before invoking its own module command.
+            if(IsIconic(ctx->owner))ShowWindow(ctx->owner,SW_RESTORE);
+            SetForegroundWindow(ctx->owner);
+            SendMessageW(ctx->owner,WM_COMMAND,MAKEWPARAM(id,0),reinterpret_cast<LPARAM>(ctx->toolbar));
+            return 0;
+        }
+        if(!source){
+            if(IsIconic(ctx->owner))ShowWindow(ctx->owner,SW_RESTORE);
+            SetForegroundWindow(ctx->owner);
+            SendMessageW(ctx->owner,WM_COMMAND,w,0);return 0;
+        }
+    }
+    if(msg==WM_CLOSE){DestroyWindow(window);return 0;}
+    if(msg==WM_NCDESTROY && ctx){
+        if(currentAIWindow==window)currentAIWindow=nullptr;
+        ctx->window=nullptr;ctx->aiToolbar=nullptr;
+        if(ctx->aiImages){ImageList_Destroy(ctx->aiImages);ctx->aiImages=nullptr;}
+    }
+    return DefWindowProcW(window,msg,w,l);
+}
+
+// Copy the source module's normal menu; commands are handled by that module.
+HMENU CopyMenuTree(HMENU source,bool root){
+    HMENU copy=root?CreateMenu():CreatePopupMenu();if(!copy)return nullptr;
+    int count=GetMenuItemCount(source);
+    for(int i=0;i<count;++i){
+        wchar_t label[1024]{};MENUITEMINFOW item{};item.cbSize=sizeof(item);
+        item.fMask=MIIM_FTYPE|MIIM_STATE|MIIM_ID|MIIM_SUBMENU|MIIM_STRING;
+        item.dwTypeData=label;item.cch=1023;
+        if(!GetMenuItemInfoW(source,static_cast<UINT>(i),TRUE,&item)){DestroyMenu(copy);return nullptr;}
+        if(item.fType&MFT_OWNERDRAW){item.fType&=~MFT_OWNERDRAW;item.fState|=MFS_DISABLED;}
+        if(item.hSubMenu){item.hSubMenu=CopyMenuTree(item.hSubMenu,false);if(!item.hSubMenu){DestroyMenu(copy);return nullptr;}}
+        if(!InsertMenuItemW(copy,static_cast<UINT>(i),TRUE,&item)){
+            if(item.hSubMenu)DestroyMenu(item.hSubMenu);DestroyMenu(copy);return nullptr;
+        }
+    }
+    return copy;
 }
 
 bool OpenWindow(Context* ctx) {
-    if (IsWindow(ctx->window)) {
-        LayoutWindow(ctx);
-        return true;
+    if(IsWindow(currentAIWindow)){
+        if(IsIconic(currentAIWindow))ShowWindow(currentAIWindow,SW_RESTORE);
+        SetForegroundWindow(currentAIWindow);return true;
     }
-    WNDCLASSEXW wc{}; wc.cbSize=sizeof(wc); wc.lpfnWndProc=WindowProc;
-    wc.hInstance=moduleHandle; wc.lpszClassName=kWindowClass;
-    wc.hCursor=LoadCursorW(nullptr, IDC_ARROW);
+    WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=WindowProc;
+    wc.hInstance=moduleHandle;wc.lpszClassName=kWindowClass;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
-    if (!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS) return false;
-    // A sibling child can be covered by the Editor's independently rendered
-    // viewport. An owned popup remains above it while leaving the toolbar free.
-    HWND window=CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"AI", WS_POPUP|WS_CLIPCHILDREN,
-        0,0,0,0,ctx->owner,nullptr,moduleHandle,ctx);
-    if (!window) return false;
-    LayoutWindow(ctx); UpdateWindow(window); return true;
+    wc.hIcon=reinterpret_cast<HICON>(SendMessageW(ctx->owner,WM_GETICON,ICON_BIG,0));
+    if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return false;
+    wchar_t ownerTitle[1024]{},title[1100]{};GetWindowTextW(ctx->owner,ownerTitle,1024);
+    const wchar_t* suffix=wcsstr(ownerTitle,L" - ");
+    swprintf_s(title,L"AI%ls",suffix?suffix:L" - StarCraft II Editor");
+    RECT r{};GetWindowRect(ctx->owner,&r);
+    HWND window=CreateWindowExW(WS_EX_APPWINDOW,kWindowClass,title,WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+        r.left,r.top,r.right-r.left,r.bottom-r.top,nullptr,nullptr,moduleHandle,ctx);
+    if(!window)return false;
+    HMENU sourceMenu=GetMenu(ctx->owner);
+    if(sourceMenu){HMENU menu=CopyMenuTree(sourceMenu,true);if(menu && !SetMenu(window,menu))DestroyMenu(menu);}
+    currentAIWindow=window;ShowWindow(window,IsZoomed(ctx->owner)?SW_SHOWMAXIMIZED:SW_SHOW);UpdateWindow(window);return true;
 }
 
 LRESULT CALLBACK OwnerProc(HWND owner, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR ref) {
     auto ctx=reinterpret_cast<Context*>(ref);
     if (message==WM_COMMAND && LOWORD(w)==ctx->command && reinterpret_cast<HWND>(l)==ctx->toolbar) {
         OpenWindow(ctx); return 0;
-    }
-    if (message==WM_SIZE || message==WM_MOVE || message==WM_WINDOWPOSCHANGED || message==WM_DPICHANGED || message==WM_SHOWWINDOW) {
-        HWND toolbar=ctx->toolbar;
-        auto result=DefSubclassProc(owner,message,w,l);
-        if (IsWindow(toolbar) && GetPropW(toolbar,kProperty)==ctx) LayoutWindow(ctx);
-        return result;
     }
     if (message==WM_NCDESTROY) {
         RemoveWindowSubclass(owner,OwnerProc,reinterpret_cast<UINT_PTR>(ctx));
@@ -269,7 +406,7 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
+    if ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -292,10 +429,11 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
         command==0 || command>0xffff || GetPropW(toolbar,kProperty)) return FALSE;
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0))));
+    int legacy=GetPropW(toolbar,kLegacyProperty6)?6:(GetPropW(toolbar,kLegacyProperty5)?5:(GetPropW(toolbar,kLegacyProperty4)?4:(GetPropW(toolbar,kLegacyProperty3)?3:(GetPropW(toolbar,kLegacyProperty2)?2:(GetPropW(toolbar,kLegacyProperty1)?1:0)))));
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) return FALSE;
-    auto ctx=new(std::nothrow) Context{toolbar,owner,nullptr,command,legacy,false,nullptr,{}};
+    auto ctx=new(std::nothrow) Context{};
     if (!ctx) return FALSE;
+    ctx->toolbar=toolbar;ctx->owner=owner;ctx->command=command;ctx->legacy=legacy;
     if (legacy) {
         ctx->original.cbSize=sizeof(ctx->original);
         ctx->original.dwMask=TBIF_IMAGE|TBIF_STYLE|TBIF_SIZE;
@@ -382,7 +520,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     wchar_t barClass[64]{}; GetClassNameW(toolbar,barClass,64);
     int index=0;
     if (lstrcmpiW(barClass,TOOLBARCLASSNAMEW)) return TRUE;
-    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5)) {
+    if (GetPropW(toolbar,kLegacyProperty1) || GetPropW(toolbar,kLegacyProperty2) || GetPropW(toolbar,kLegacyProperty3) || GetPropW(toolbar,kLegacyProperty4) || GetPropW(toolbar,kLegacyProperty5) || GetPropW(toolbar,kLegacyProperty6)) {
         auto oldIndex=SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0);
         if (oldIndex>=0) SC2AI_Attach(toolbar,static_cast<int>(oldIndex),kCommand);
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
@@ -425,7 +563,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v6");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v7");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

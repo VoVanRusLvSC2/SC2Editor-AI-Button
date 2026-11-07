@@ -6,10 +6,9 @@ using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
 static BOOL CALLBACK Find(HWND h,LPARAM owner) {
-    if (GetWindow(h,GW_OWNER)!=reinterpret_cast<HWND>(owner)) return TRUE;
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2") || !lstrcmpW(cls,L"SC2AIButton.Window.v4") || !lstrcmpW(cls,L"SC2AIButton.Window.v5")) oldWindow=h;
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v6")) newWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v1") || !lstrcmpW(cls,L"SC2AIButton.Window.v2") || !lstrcmpW(cls,L"SC2AIButton.Window.v4") || !lstrcmpW(cls,L"SC2AIButton.Window.v5") || !lstrcmpW(cls,L"SC2AIButton.Window.v6")) { if(GetWindow(h,GW_OWNER)==reinterpret_cast<HWND>(owner))oldWindow=h; }
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v7")) newWindow=h;
     return TRUE;
 }
 static BOOL CALLBACK FindChild(HWND h,LPARAM) {
@@ -45,11 +44,11 @@ int wmain(int argc,wchar_t**argv) {
     HWND previous=oldWindow;
     if(!attach(bar,1,500))return 9;
     oldWindow=nullptr;newWindow=nullptr;EnumThreadWindows(GetCurrentThreadId(),Find,reinterpret_cast<LPARAM>(owner));EnumChildWindows(owner,FindChild,0);
-    if(IsWindow(previous)||!IsWindow(newWindow)||GetWindow(newWindow,GW_OWNER)!=owner||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
+    if(IsWindow(previous)||!IsWindow(newWindow)||GetWindow(newWindow,GW_OWNER)!=nullptr||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 10;
     TBBUTTON button{}; if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap<0)return 11;
     if(!detach(bar,500)||IsWindow(newWindow)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=3)return 12;
     if(!SendMessageW(bar,TB_GETBUTTON,1,reinterpret_cast<LPARAM>(&button)) || button.iBitmap!=before.iBitmap)return 13;
     if(!oldDetach(bar,500)||SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=2)return 14;
     FreeLibrary(current);FreeLibrary(old);DestroyWindow(owner);ImageList_Destroy(images);
-    std::puts("PASS: legacy button upgraded in place; window replaced with owned panel; legacy restored on detach");return 0;
+    std::puts("PASS: legacy button upgraded in place; window replaced with separate AI window; legacy restored on detach");return 0;
 }

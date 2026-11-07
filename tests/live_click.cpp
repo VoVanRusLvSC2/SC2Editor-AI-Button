@@ -17,8 +17,9 @@ static BOOL CALLBACK Find(HWND h, LPARAM) {
     DWORD pid=0; GetWindowThreadProcessId(h,&pid);
     if (pid!=targetPid) return TRUE;
     wchar_t cls[128]{},title[1024]{}; GetClassNameW(h,cls,128); GetWindowTextW(h,title,1024);
-    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v6")) aiWindow=h;
+    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v7")) aiWindow=h;
     if (legacyOpen==4 && !lstrcmpW(cls,L"SC2AIButton.Window.v4")) aiWindow=h;
+    if (legacyOpen==6 && !lstrcmpW(cls,L"SC2AIButton.Window.v6")) aiWindow=h;
     if (legacyOpen==5 && !lstrcmpW(cls,L"SC2AIButton.Window.v5")) aiWindow=h;
     if (legacyOpen && legacyOpen<3 && !lstrcmpW(cls,legacyOpen==1?L"SC2AIButton.Window.v1":L"SC2AIButton.Window.v2")) aiWindow=h;
     if (!lstrcmpW(cls,L"#32770") && wcsstr(title,L" - StarCraft II Editor") &&
@@ -62,7 +63,7 @@ int wmain(int argc,wchar_t**argv) {
     if (argc<4 || argc>6) return 1;
     targetPid=wcstoul(argv[2],nullptr,10);
     if (argc>=5) requestedTitle=argv[4];
-    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open")?1:(!lstrcmpW(argv[5],L"legacy-v2-open")?2:(!lstrcmpW(argv[5],L"legacy-v3-open")?3:(!lstrcmpW(argv[5],L"legacy-v4-open")?4:(!lstrcmpW(argv[5],L"legacy-v5-open")?5:0))));
+    if (argc==6) legacyOpen=!lstrcmpW(argv[5],L"legacy-open")?1:(!lstrcmpW(argv[5],L"legacy-v2-open")?2:(!lstrcmpW(argv[5],L"legacy-v3-open")?3:(!lstrcmpW(argv[5],L"legacy-v4-open")?4:(!lstrcmpW(argv[5],L"legacy-v5-open")?5:(!lstrcmpW(argv[5],L"legacy-v6-open")?6:0)))));
     HDESK desk=OpenDesktopW(argv[1],0,FALSE,DESKTOP_ENUMERATE|DESKTOP_READOBJECTS);
     if (!desk || !SetThreadDesktop(desk)) { std::printf("desktop error %lu\n",GetLastError());return 2; }
     EnumDesktopWindows(desk,Find,0);
@@ -84,13 +85,13 @@ int wmain(int argc,wchar_t**argv) {
         !SendMessageTimeoutW(toolbar,WM_LBUTTONUP,0,MAKELPARAM(x,y),SMTO_ABORTIFHUNG,5000,&result)) return 6;
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
     if (!IsWindow(aiWindow) || !IsWindowVisible(aiWindow) ||
-        (legacyOpen==3 ? GetParent(aiWindow)!=editor : GetWindow(aiWindow,GW_OWNER)!=editor)) { std::puts("AI window not opened with the expected state");return 7; }
+        (legacyOpen==3 ? GetParent(aiWindow)!=editor : (legacyOpen ? GetWindow(aiWindow,GW_OWNER)!=editor : GetWindow(aiWindow,GW_OWNER)!=nullptr))) { std::puts("AI window not opened with the expected state");return 7; }
     if (legacyOpen) { std::puts("PASS: legacy AI window open for upgrade test");return 0; }
-    RECT barRect{},panelRect{}; GetWindowRect(toolbar,&barRect);GetWindowRect(aiWindow,&panelRect);
-    if (panelRect.top<barRect.bottom || panelRect.right<=panelRect.left || panelRect.bottom<=panelRect.top) { std::puts("AI panel overlaps toolbar or is empty");return 11; }
-    POINT workspace{panelRect.left+100,panelRect.top+100};
-    HWND under=WindowFromPoint(workspace);
-    if (under && GetAncestor(under,GA_ROOT)!=aiWindow) { std::puts("AI panel is not visually above the workspace");return 12; }
+    HWND aiBar=GetDlgItem(aiWindow,100);
+    if(!aiBar || !(SendMessageW(aiBar,TB_GETSTATE,60000,0)&TBSTATE_CHECKED) ||
+       !GetDlgItem(aiWindow,109) || !GetDlgItem(aiWindow,110)) {
+        std::puts("AI window toolbar or provider controls missing");return 11;
+    }
     swprintf_s(image,L"%ls\\editor-with-ai.bmp",argv[3]); Capture(editor,image);
     swprintf_s(image,L"%ls\\ai-window.bmp",argv[3]); Capture(aiWindow,image);
     HWND first=aiWindow;
@@ -103,6 +104,6 @@ int wmain(int argc,wchar_t**argv) {
     for (int i=0;i<40 && !aiWindow;++i) { Sleep(100);EnumDesktopWindows(desk,Find,0); }
     if (!IsWindow(aiWindow)) return 10;
     SendMessageW(aiWindow,WM_CLOSE,0,0);
-    std::printf("PASS: Editor toolbar opens and reopens AI panel below the visible toolbar\n");
+    std::printf("PASS: Editor opens and reopens separate AI window with selected AI button\n");
     return 0;
 }
