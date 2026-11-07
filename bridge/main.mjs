@@ -153,7 +153,7 @@ async function sendCodex(text,images){
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,cwd:turnCwd,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user'});
   emit('line',displayUserText(text,images.length));emit('line','AI: ');emit('busy','1');
   const input=[{type:'text',text:mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.')),text_elements:[]},...images.map(image=>({type:'localImage',path:image.path}))];
-  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
+  const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input,model:model||null,sandboxPolicy:{type:'workspaceWrite',writableRoots:[turnCwd],networkAccess:false}});emit('accepted');if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
   if(!codexPath)return undefined;
@@ -192,7 +192,8 @@ async function sendClaude(text,images){
     canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:tr('Отклонено пользователем','Declined by user')}));emit('approval',id,`${tr('Запрос Claude','Claude request')}: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
   const content=mapPrompt(text||tr('Опиши прикреплённые изображения.','Describe the attached images.'));
   async function* imagePrompt(){yield {type:'user',message:{role:'user',content:[...images.map(image=>({type:'image',source:{type:'base64',media_type:'image/png',data:image.bytes.toString('base64')}})),{type:'text',text:content}]},parent_tool_use_id:null};}
-  try{for await(const message of claude.query({prompt:images.length?imagePrompt():content,options})){
+  let accepted=false;try{for await(const message of claude.query({prompt:images.length?imagePrompt():content,options})){
+    if(!accepted){accepted=true;emit('accepted');}
     if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;emit('selected',selected);}
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
@@ -212,6 +213,6 @@ async function handle(line){const [cmd,...args]=line.split('\t');const a=args.ma
   else if(cmd==='stop'){if(questionRequest){codex.send({id:questionRequest.requestId,error:{code:-32800,message:'Input cancelled by user.'}});questionRequest=null;}if(running?.provider==='codex'){if(running.turnId)await codex.request('turn/interrupt',{threadId:running.threadId,turnId:running.turnId});else running.stopRequested=true;}else aborter?.abort();}
   else if(cmd==='approve'){const f=approvals.get(a[0]);if(f){approvals.delete(a[0]);f(a[1]==='yes');}}
 }
-createInterface({input:process.stdin}).on('line',line=>{handle(line).catch(e=>{running=null;emit('busy','0');emit('error',e.message||String(e));});}).on('close',()=>{for(const f of approvals.values())f(false);aborter?.abort();codex?.close();process.exit(0);});
+createInterface({input:process.stdin}).on('line',line=>{handle(line).catch(e=>{running=null;emit('busy','0');const message=e.message||String(e);emit('error',/already has an active writer/i.test(message)?tr('Этот чат занят другим процессом Codex. Продолжите его там или освободите чат и повторите. Текст и вложения сохранены.','This chat is in use by another Codex process. Continue it there or release it and try again. Your text and attachments are preserved.'):message);});}).on('close',()=>{for(const f of approvals.values())f(false);aborter?.abort();codex?.close();process.exit(0);});
 process.on('uncaughtException',e=>emit('error',e.message||String(e)));
 connect(process.argv[3]==='claude'?'claude':'codex').catch(e=>emit('error',e.message||String(e)));

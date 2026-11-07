@@ -1,4 +1,4 @@
-param([string]$Version='0.20.0-alpha')
+param([string]$Version='0.21.0-alpha')
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
 & (Join-Path $PSScriptRoot 'build.ps1')
