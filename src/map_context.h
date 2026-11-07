@@ -7,7 +7,8 @@
 
 struct MapContext { std::wstring path, caption; bool dirty=false, inferred=false; };
 inline std::wstring NormalizeMapPath(std::wstring value) {
-    for(auto& c:value){if(c==L'/')c=L'\\';c=static_cast<wchar_t>(towlower(c));}
+    for(auto& c:value)if(c==L'/')c=L'\\';
+    if(!value.empty())CharLowerBuffW(value.data(),static_cast<DWORD>(value.size()));
     return value;
 }
 inline bool MapCaptionMatches(const std::wstring& caption,const std::wstring& file){

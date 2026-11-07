@@ -9,6 +9,7 @@ int wmain(int argc,wchar_t** argv){
     if(MapCaptionMatches(L"Z:/.../Example.SC2Map",full))return 3;
     if(MapCaptionMatches(L"D:/.../r0/Map/output/Example.SC2Map",full))return 4;
     if(MapCaptionMatches(L"Z:/.../r0/Map/output/Other.SC2Map",full))return 5;
+    if(!MapCaptionMatches(L"C:/ПРОЕКТ/КАРТА.SC2MAP",L"c:\\проект\\карта.sc2map"))return 10;
     wchar_t temp[MAX_PATH]{};if(!GetTempPathW(MAX_PATH,temp))return 6;
     std::wstring file=std::wstring(temp)+L"SC2AI карта с пробелом "+std::to_wstring(GetCurrentProcessId())+L".SC2Map";
     HANDLE f=CreateFileW(file.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
