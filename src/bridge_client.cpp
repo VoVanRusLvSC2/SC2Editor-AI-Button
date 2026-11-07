@@ -6,8 +6,8 @@
 #include <vector>
 #include <string>
 
-// Храним процесс bridge, каналы и окно-получатель. Счётчик ссылок удерживает состояние, пока
-// фоновый поток ещё читает ответ.
+// Keep the bridge process, pipes and recipient window together. Reference counting keeps the
+// state alive while the reader thread is still running.
 struct BridgeState {
     std::atomic<HWND> window{nullptr};
     HANDLE input=nullptr, output=nullptr, process=nullptr;
@@ -23,8 +23,8 @@ static std::wstring Wide(const std::string& s,bool russian){
     if(s.empty())return {};int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),static_cast<int>(s.size()),nullptr,0);
     if(n<=0)return russian?L"[Некорректный текст]":L"[Invalid text]";std::wstring out(static_cast<size_t>(n),L'\0');MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),static_cast<int>(s.size()),out.data(),n);return out;
 }
-// Поля передаются как UTF-8 в Base64 и разделяются табуляцией. Base64 сохраняет структуру строк,
-// но не шифрует данные.
+// Fields are UTF-8 encoded as Base64 and separated by tabs. Base64 preserves the line
+// protocol; it does not encrypt the data.
 static std::string Encode(const std::wstring& text){
     auto in=Utf8(text);if(in.empty())return {};DWORD size=0;
     if(!CryptBinaryToStringA(reinterpret_cast<const BYTE*>(in.data()),static_cast<DWORD>(in.size()),CRYPT_STRING_BASE64|CRYPT_STRING_NOCRLF,nullptr,&size))return {};
@@ -36,8 +36,8 @@ static std::wstring Decode(const std::string& in,bool russian){
     std::string bytes(n,'\0');if(!CryptStringToBinaryA(in.c_str(),static_cast<DWORD>(in.size()),CRYPT_STRING_BASE64,reinterpret_cast<BYTE*>(bytes.data()),&n,nullptr,nullptr))return russian?L"[Некорректные данные]":L"[Invalid data]";
     bytes.resize(n);return Wide(bytes,russian);
 }
-// Читатель работает вне UI-потока: отправляем событие через PostMessage, а интерфейс обновит
-// собственный поток окна.
+// The reader runs outside the UI thread. Post the event so the window can update its controls
+// on its own thread.
 static void Deliver(BridgeState* s,const std::string& line){
     HWND window=s->window.load();if(!window)return;
     auto e=new(std::nothrow) BridgeEvent{};if(!e)return;e->source=s;
@@ -45,8 +45,8 @@ static void Deliver(BridgeState* s,const std::string& line){
     while(end!=std::string::npos){start=end+1;end=line.find('\t',start);e->fields.push_back(Decode(line.substr(start,end-start),s->russian));}
     if(!PostMessageW(window,WM_AI_BRIDGE,0,reinterpret_cast<LPARAM>(e)))delete e;
 }
-// Строка может прийти несколькими частями ReadFile. Сохраняем остаток до следующего чтения и
-// ограничиваем слишком длинный ответ.
+// A line may arrive across several ReadFile calls. Retain incomplete data until the next read
+// and limit excessively long responses.
 static DWORD WINAPI ReadOutput(void* raw){
     auto s=static_cast<BridgeState*>(raw);char buf[4096];DWORD count=0;std::string pending;
     while(ReadFile(s->output,buf,sizeof(buf),&count,nullptr) && count){
@@ -58,8 +58,8 @@ static DWORD WINAPI ReadOutput(void* raw){
     if(WaitForSingleObject(s->process,0)==WAIT_TIMEOUT)TerminateProcess(s->process,1);
     CloseHandle(s->process);Release(s);return 0;
 }
-// Запускаем bridge/main.mjs скрытым процессом Node.js и связываем его с DLL через унаследованные
-// stdin/stdout.
+// Launch bridge/main.mjs as a hidden Node.js process and connect it to the DLL through
+// inherited stdin/stdout pipes.
 BridgeState* StartBridge(HWND window, HMODULE module, const std::wstring& workspace,bool claude,bool russian){
     wchar_t node[32768]{};DWORD got=SearchPathW(nullptr,L"node.exe",nullptr,32768,node,nullptr);
     if(!got||got>=32768){wchar_t programFiles[32768]{};DWORD n=GetEnvironmentVariableW(L"ProgramFiles",programFiles,32768);
@@ -94,11 +94,12 @@ BridgeState* StartBridge(HWND window, HMODULE module, const std::wstring& worksp
     HANDLE thread=CreateThread(nullptr,0,ReadOutput,s,0,nullptr);if(!thread){TerminateProcess(s->process,1);CloseHandle(s->process);CloseHandle(s->input);CloseHandle(s->output);Release(s);Release(s);return nullptr;}
     CloseHandle(thread);return s;
 }
-// Отправляем имя команды и отдельно закодированные поля. Формат должен совпадать с
+// Send a command and individually encoded fields. The format must match the parser in
 // bridge/main.mjs.
 bool SendBridge(BridgeState* s,const char* command,const std::vector<std::wstring>& fields){
     if(!s||!s->input)return false;std::string line(command);for(const auto& field:fields){line+='\t';line+=Encode(field);}line+='\n';
     DWORD written=0;return WriteFile(s->input,line.data(),static_cast<DWORD>(line.size()),&written,nullptr) && written==line.size();
 }
-// Отвязываем окно и закрываем входной канал. Поток чтения завершит очистку после выхода bridge.
+// Disconnect the window and close the input pipe. The reader thread finishes cleanup after the
+// bridge exits.
 void StopBridge(BridgeState* s){if(!s)return;s->window.store(nullptr);if(s->input){CloseHandle(s->input);s->input=nullptr;}Release(s);}

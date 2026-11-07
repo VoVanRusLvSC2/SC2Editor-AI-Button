@@ -5,17 +5,17 @@
 #include <algorithm>
 #include <cwctype>
 
-// Контекст получается из заголовка и истории редактора. Он помогает найти карту, но не
-// подтверждает привязку MCP к документу в памяти.
+// This context comes from the window title and editor history. It helps identify a map but
+// does not prove that MCP is bound to the in-memory document.
 struct MapContext { std::wstring path, caption; bool dirty=false, inferred=false; };
-// Приводим регистр и слеши к единому виду только для сравнения Windows-путей.
+// Normalize case and slashes only for comparing Windows paths.
 inline std::wstring NormalizeMapPath(std::wstring value) {
     for(auto& c:value)if(c==L'/')c=L'\\';
     if(!value.empty())CharLowerBuffW(value.data(),static_cast<DWORD>(value.size()));
     return value;
 }
-// Сокращённый путь сопоставляется по достаточно конкретным началу и концу. Совпадения только имени
-// файла недостаточно.
+// Match abbreviated paths using sufficiently specific prefixes and suffixes. A filename alone
+// is not a reliable match.
 inline bool MapCaptionMatches(const std::wstring& caption,const std::wstring& file){
     auto c=NormalizeMapPath(caption),p=NormalizeMapPath(file);auto dots=c.find(L"...");size_t dotsLen=3;
     if(dots==std::wstring::npos){dots=c.find(L'…');dotsLen=1;}
@@ -24,15 +24,15 @@ inline bool MapCaptionMatches(const std::wstring& caption,const std::wstring& fi
     if(prefix.size()!=3 || prefix[1]!=L':' || prefix[2]!=L'\\' || suffix.empty() || suffix[0]!=L'\\' || suffix.size()<20 || std::count(suffix.begin(),suffix.end(),L'\\')<3)return false;
     return p.size()>prefix.size()+suffix.size() && p.compare(0,prefix.size(),prefix)==0 && p.compare(p.size()-suffix.size(),suffix.size(),suffix)==0;
 }
-// Принимаем только существующие файлы карт и модов с ожидаемым расширением.
+// Accept only existing map or mod files with the expected extension.
 inline bool ExistingMap(const std::wstring& path){
     auto normalized=NormalizeMapPath(path);
     if(normalized.size()<7 || (normalized.rfind(L".sc2map")!=normalized.size()-7 && normalized.rfind(L".sc2mod")!=normalized.size()-7))return false;
     DWORD attributes=GetFileAttributesW(path.c_str());return attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
 }
-// Читаем путь и звёздочку несохранённых изменений из заголовка. Если путь сокращён, принимаем
-// только единственное подходящее совпадение из истории. Флаг inferred сообщает, что такой путь ещё
-// нужно проверить через MCP.
+// Read the path and unsaved-change marker from the window title. For an abbreviated path,
+// accept only a unique match from editor history. The inferred flag indicates that MCP must
+// still verify the match.
 inline MapContext ReadMapContext(HWND owner){
     wchar_t title[32768]{};GetWindowTextW(owner,title,32768);std::wstring text(title);MapContext result;
     auto left=text.find(L" - ["),right=text.rfind(L"] - ");

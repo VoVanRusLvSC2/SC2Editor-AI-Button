@@ -17,8 +17,8 @@
 #include "image_attachment.h"
 #include "editor_window.h"
 
-// Версионные свойства и имена классов позволяют обнаружить старую DLL после обновления без
-// перезапуска редактора и не создать дубликат кнопки.
+// Versioned properties and class names identify old DLL instances after an in-place update and
+// help prevent duplicate buttons.
 namespace {
 constexpr wchar_t kLegacyProperty1[] = L"SC2AIButton.context.v1";
 constexpr wchar_t kLegacyProperty2[] = L"SC2AIButton.context.v2";
@@ -82,8 +82,8 @@ volatile LONG activeButtons = 0;
 HWND currentAIWindow = nullptr;
 bool selectedClaude = false;
 
-// Контекст связывает исходную панель и AI-окно с выбранным чатом, bridge и вложениями. HWND —
-// дескриптор окна или элемента Windows.
+// The context ties the source toolbar and AI window to the selected chat, bridge and
+// attachments. HWND is a Windows window or control handle.
 struct ImageAttachment { std::wstring path; HBITMAP bitmap; ULONGLONG bytes; };
 struct ChatItem { std::wstring id,title,group,name,color; };
 struct Context {
@@ -99,7 +99,8 @@ struct Context {
     HWND attach,previews[kMaxImages],removes[kMaxImages];std::vector<ImageAttachment> attachments;
 };
 const wchar_t* Tr(Context* ctx,const wchar_t* ru,const wchar_t* en){return ctx->russian?ru:en;}
-// Определяем язык по меню редактора; если меню недоступно, используем язык интерфейса Windows.
+// Detect the language from the editor menu; fall back to the Windows UI language if the menu
+// is unavailable.
 bool RussianEditor(HWND owner){
     HMENU menu=GetMenu(owner);wchar_t first[128]{};
     if(menu && GetMenuStringW(menu,0,first,128,MF_BYPOSITION)>0){
@@ -165,8 +166,7 @@ HBITMAP CreateAIIcon(int width,int height) {
     return bitmap;
 }
 
-// Получаем доступные Windows названия кнопок и ищем горячую клавишу. Неоднозначное совпадение не
-// используем.
+// Read accessible toolbar names and find a shortcut. Do not use an ambiguous match.
 int FindToolbarShortcutIndex(HWND toolbar,const wchar_t* shortcut){
     int found=-1;HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);IAccessible* accessible=nullptr;
     if(SUCCEEDED(AccessibleObjectFromWindow(toolbar,static_cast<DWORD>(OBJID_CLIENT),IID_IAccessible,reinterpret_cast<void**>(&accessible))) && accessible){
@@ -247,8 +247,8 @@ HBITMAP CreateNativeAIIcon(HWND toolbar, HIMAGELIST images, int insertion, int w
     SelectObject(dc,old);DeleteDC(dc);return bitmap;
 }
 
-// Сначала создаём значок из текстуры родной буквы A; если это невозможно, используем запасной
-// рисованный вариант.
+// First derive the icon from the editor's native A texture; use the drawn fallback if
+// extraction fails.
 int AddAIIcon(HWND toolbar,Context* ctx,int insertion) {
     auto images=reinterpret_cast<HIMAGELIST>(SendMessageW(toolbar,TB_GETIMAGELIST,0,0));
     int width=0,height=0;
@@ -266,8 +266,8 @@ int AddAIIcon(HWND toolbar,Context* ctx,int insertion) {
     int index=ImageList_Add(images,icon,nullptr); DeleteObject(icon); return index;
 }
 
-// Удаляем только собственный список изображений. Список, принадлежащий редактору, освобождать
-// нельзя.
+// Destroy only image lists created by this DLL. The editor remains responsible for its own
+// image list.
 void ReleaseOwnedImages(Context* ctx) {
     if (!ctx->ownsImages || !ctx->images) return;
     if (IsWindow(ctx->toolbar) && reinterpret_cast<HIMAGELIST>(SendMessageW(ctx->toolbar,TB_GETIMAGELIST,0,0))==ctx->images)
@@ -275,7 +275,7 @@ void ReleaseOwnedImages(Context* ctx) {
     ImageList_Destroy(ctx->images); ctx->images=nullptr;
 }
 
-// Числовые ID элементов используются Windows в сообщениях WM_COMMAND и при поиске через
+// Windows uses these control IDs in WM_COMMAND messages and when looking up controls with
 // GetDlgItem.
 enum : int { kToolbar=100, kCodex=101, kClaude=102, kHeading=103,
              kStatus=104, kDescription=105, kHistory=106, kInput=107, kSend=108,
@@ -290,8 +290,8 @@ HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int 
     return child;
 }
 
-// Меняем видимые элементы выбора провайдера. Переключение подключения выполняется отдельной
-// командой bridge.
+// Update the visible provider selection. The connection is switched separately by a bridge
+// command.
 void SelectProvider(Context* ctx,bool claude) {
     ctx->claudeSelected=claude;selectedClaude=claude;
     if(IsWindow(ctx->codex))SendMessageW(ctx->codex,BM_SETCHECK,claude?BST_UNCHECKED:BST_CHECKED,0);
@@ -302,7 +302,8 @@ void SelectProvider(Context* ctx,bool claude) {
     }
     SetWindowTextW(ctx->heading,claude?L"Claude":L"Codex");
 }
-// Настройки отвечают за выбор Codex/Claude и вход. Во время ответа провайдера не переключаем.
+// Handle provider selection and sign-in from Settings. Do not switch providers during an
+// active response.
 LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
     auto ctx=reinterpret_cast<Context*>(GetWindowLongPtrW(window,GWLP_USERDATA));
     if(msg==WM_CREATE){
@@ -347,8 +348,8 @@ void OpenSettings(Context* ctx,HWND owner){
         r.left+40,r.top+40,400,280,owner,nullptr,moduleHandle,ctx);
 }
 
-// Ищем родные New/Open/Save по доступным подписям Ctrl+N/O/S. Неоднозначные совпадения не
-// пересылаем редактору.
+// Find native New/Open/Save commands through accessible Ctrl+N/O/S labels. Never forward an
+// ambiguous match.
 void FindFileCommands(Context* ctx){
     for(auto& command:ctx->fileCommands)command=-1;
     HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
@@ -373,7 +374,7 @@ void FindFileCommands(Context* ctx){
     if(SUCCEEDED(initialized))CoUninitialize();
 }
 bool IsFileCommand(const Context* ctx,int command){for(int id:ctx->fileCommands)if(id>=0 && id==command)return true;return false;}
-// Копии кнопок New/Open/Save повторяют доступность родных команд редактора.
+// Keep the copied New/Open/Save buttons in sync with the enabled state of the editor commands.
 void SyncFileCommands(Context* ctx){
     if(!IsWindow(ctx->aiToolbar))return;
     for(int command:ctx->fileCommands)if(command>=0){
@@ -381,7 +382,7 @@ void SyncFileCommands(Context* ctx){
         SendMessageW(ctx->aiToolbar,TB_ENABLEBUTTON,command,MAKELONG(state!=-1 && (state&TBSTATE_ENABLED),0));
     }
 }
-// Обновляем заголовок AI-окна по заголовку связанного окна редактора.
+// Update the AI window title from the associated editor window.
 void SyncEditorTitle(Context* ctx){
     if(!IsWindow(ctx->owner) || !IsWindow(ctx->window))return;
     wchar_t ownerTitle[1024]{},current[1100]{};GetWindowTextW(ctx->owner,ownerTitle,1024);GetWindowTextW(ctx->window,current,1100);
@@ -389,8 +390,8 @@ void SyncEditorTitle(Context* ctx){
     const std::wstring desired=std::wstring(L"AI")+(suffix?suffix:L" - StarCraft II Editor");
     if(desired!=current)SetWindowTextW(ctx->window,desired.c_str());
 }
-// AI — отдельное окно, поэтому создаём собственную панель по исходной. Оставляем доступными
-// навигацию и найденные файловые команды.
+// AI is a separate window, so build its toolbar from the source toolbar. Keep navigation and
+// recognized file commands available.
 bool CopyToolbar(Context* ctx,HWND window) {
     HWND bar=CreateWindowExW(0,TOOLBARCLASSNAMEW,nullptr,WS_CHILD|WS_VISIBLE|TBSTYLE_FLAT|CCS_TOP|CCS_NODIVIDER,
         0,0,0,0,window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kToolbar)),moduleHandle,nullptr);
@@ -425,8 +426,8 @@ bool CopyToolbar(Context* ctx,HWND window) {
     }
     SendMessageW(bar,TB_AUTOSIZE,0,0);SyncFileCommands(ctx);return true;
 }
-// При изменении размера окна пересчитываем расположение элементов. Ширина заголовка чатов
-// измеряется по его тексту.
+// Recalculate control positions when the window is resized. Measure the chat heading text when
+// laying out its buttons.
 void LayoutControls(Context* ctx,HWND window) {
     RECT r{};GetClientRect(window,&r);int width=r.right,height=r.bottom;
     SendMessageW(ctx->aiToolbar,TB_AUTOSIZE,0,0);
@@ -466,13 +467,13 @@ void LayoutControls(Context* ctx,HWND window) {
         ShowWindow(ctx->removes[i],i<ctx->attachments.size()?SW_SHOW:SW_HIDE);
     }
 }
-// Показываем миниатюры и кнопки удаления для текущих вложений.
+// Show previews and remove buttons for the current attachments.
 void RefreshImages(Context* ctx){
     for(size_t i=0;i<kMaxImages;++i)if(ctx->previews[i])SendMessageW(ctx->previews[i],STM_SETIMAGE,IMAGE_BITMAP,i<ctx->attachments.size()?reinterpret_cast<LPARAM>(ctx->attachments[i].bitmap):0);
     if(IsWindow(ctx->window))LayoutControls(ctx,ctx->window);
 }
-// Освобождаем миниатюры; при отмене также удаляем неотправленные временные файлы. Отправленные
-// копии могут использоваться историей.
+// Release previews; discard unsent temporary files when requested. Sent copies may still be
+// needed by chat history.
 void ClearImages(Context* ctx,bool discard){
     for(auto preview:ctx->previews)if(preview)SendMessageW(preview,STM_SETIMAGE,IMAGE_BITMAP,0);
     for(auto& image:ctx->attachments){if(discard)DeleteFileW(image.path.c_str());DeleteObject(image.bitmap);}
@@ -484,7 +485,7 @@ void RemoveImage(Context* ctx,size_t index){
     auto& image=ctx->attachments[index];DeleteFileW(image.path.c_str());DeleteObject(image.bitmap);
     ctx->attachments.erase(ctx->attachments.begin()+index);RefreshImages(ctx);
 }
-// Проверяем количество и суммарный размер, прежде чем добавить обработанное изображение в окно.
+// Check the attachment count and total size before adding a converted image to the window.
 bool AddImage(Context* ctx,const std::wstring& path,HBITMAP bitmap){
     WIN32_FILE_ATTRIBUTE_DATA data{};ULONGLONG size=0;
     if(GetFileAttributesExW(path.c_str(),GetFileExInfoStandard,&data))size=(static_cast<ULONGLONG>(data.nFileSizeHigh)<<32)|data.nFileSizeLow;
@@ -496,8 +497,8 @@ bool AddImage(Context* ctx,const std::wstring& path,HBITMAP bitmap){
     ctx->attachments.push_back({path,bitmap,size});RefreshImages(ctx);return true;
 }
 void ImageError(Context* ctx){MessageBoxW(ctx->window,Tr(ctx,L"Не удалось добавить изображение. Используйте PNG, JPEG, GIF или BMP размером до 7 МБ после преобразования.",L"Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion."),Tr(ctx,L"Изображение",L"Image"),MB_OK|MB_ICONERROR);}
-// Обрабатываем поле ввода: Enter отправляет сообщение, Shift+Enter добавляет строку, Ctrl+V
-// поддерживает изображения.
+// Handle the composer keys: Enter sends, Shift+Enter inserts a newline, and Ctrl+V can paste
+// images.
 LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWORD_PTR raw){
     auto ctx=reinterpret_cast<Context*>(raw);
     if(msg==WM_CHAR && w==L'\r' && !(GetKeyState(VK_SHIFT)&0x8000)){
@@ -515,7 +516,7 @@ LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWO
     if(msg==WM_NCDESTROY)RemoveWindowSubclass(input,InputProc,id);
     return DefSubclassProc(input,msg,w,l);
 }
-// Открываем стандартный диалог выбора файлов и обрабатываем выбранные изображения.
+// Open the standard file picker and process the selected images.
 void ChooseImage(Context* ctx){
     wchar_t file[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=ctx->window;
     dialog.lpstrFilter=Tr(ctx,L"Изображения (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0Все файлы\0*.*\0\0",L"Images (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0All files\0*.*\0\0");
@@ -530,8 +531,8 @@ std::wstring Workspace(HWND owner){
     auto file=ReadMapContext(owner).path;size_t slash=file.find_last_of(L"\\/");
     return slash==std::wstring::npos?std::wstring{}:file.substr(0,slash);
 }
-// Передаём bridge путь карты, признак изменений и ID окна/процесса. Сам путь не гарантирует
-// привязку MCP к памяти документа.
+// Send the map path, unsaved flag, and window/process IDs to the bridge. The path alone does
+// not prove MCP is bound to the in-memory document.
 void SendMapContext(Context* ctx){
     auto map=ReadMapContext(ctx->owner);
     SendBridge(ctx->bridge,"map",{map.path,map.dirty?L"1":L"0",map.caption,std::to_wstring(reinterpret_cast<UINT_PTR>(ctx->owner)),std::to_wstring(GetCurrentProcessId()),map.inferred?L"1":L"0"});
@@ -542,7 +543,7 @@ void Append(Context* ctx,const std::wstring& text,COLORREF color=RGB(35,40,46),b
     SendMessageW(edit,EM_REPLACESEL,FALSE,reinterpret_cast<LPARAM>(text.c_str()));SendMessageW(edit,EM_SCROLLCARET,0,0);
 }
 constexpr COLORREF kAIColor=RGB(0,105,170);
-// Цвета помогают различать ответы AI, сообщения пользователя и технические события.
+// Use colors to distinguish AI replies, user messages and technical events.
 void AppendEntry(Context* ctx,const std::wstring& text,bool aiContinuation=false){
     if(text.empty())return;
     Append(ctx,L"\r\n");
@@ -556,7 +557,7 @@ void AppendEntry(Context* ctx,const std::wstring& text,bool aiContinuation=false
     else Append(ctx,text,ai?kAIColor:RGB(35,40,46));
     Append(ctx,L"\r\n");
 }
-// При открытии чата история заново выводится и раскрашивается по префиксам сообщений.
+// Render chat history again and color entries according to their message prefixes.
 void RenderHistory(Context* ctx,const std::wstring& history){
     SetWindowTextW(ctx->description,L"");size_t start=0;bool ai=false;
     while(start<history.size()){
@@ -567,8 +568,8 @@ void RenderHistory(Context* ctx,const std::wstring& history){
     }
     SendMessageW(ctx->description,WM_VSCROLL,SB_BOTTOM,0);
 }
-// Включаем элементы в зависимости от подключения, ответа и выбора чата; группу нельзя удалить как
-// отдельный чат.
+// Enable controls according to connection state, active response and selection. A group cannot
+// be deleted as an individual chat.
 void UpdateControls(Context* ctx){
     EnableWindow(ctx->input,ctx->ready && (!ctx->busy || ctx->awaitingAnswer));EnableWindow(ctx->send,ctx->ready || ctx->busy);
     SetWindowTextW(ctx->send,ctx->awaitingAnswer?Tr(ctx,L"Ответить",L"Reply"):(ctx->busy?Tr(ctx,L"Остановить",L"Stop"):Tr(ctx,L"Отправить",L"Send")));
@@ -580,14 +581,14 @@ void UpdateControls(Context* ctx){
     EnableWindow(ctx->deleteChat,ctx->ready && !ctx->busy && selectedChat);
     EnableWindow(ctx->attach,ctx->ready && !ctx->busy);for(auto button:ctx->removes)EnableWindow(button,ctx->ready && !ctx->busy);
 }
-// Находим выбранный чат по ID: список содержит также служебные строки нового чата и групп.
+// Find the selected chat by ID: the list also contains new-chat and group rows.
 void SelectChatRow(Context* ctx){
     int selected=ctx->selectedId.empty()?0:-1;
     for(size_t i=1;i<ctx->chatRows.size();++i)if(ctx->chatRows[i]==L"t"+ctx->selectedId){selected=static_cast<int>(i);break;}
     SendMessageW(ctx->chatList,LB_SETCURSEL,selected,0);
 }
-// Строим список с учётом фильтра All/IN_EDITOR и свёрнутых групп. В chatRows хранятся ключи
-// действий, а не только видимые названия.
+// Build the list using the All/IN_EDITOR filter and collapsed groups. chatRows stores action
+// keys separately from visible labels.
 void RenderChats(Context* ctx){
     SendMessageW(ctx->chatList,LB_RESETCONTENT,0,0);ctx->chatRows.clear();
     auto add=[&](const std::wstring& text,const std::wstring& key){if(SendMessageW(ctx->chatList,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(text.c_str()))>=0)ctx->chatRows.push_back(key);};
@@ -613,7 +614,7 @@ COLORREF FolderColor(const std::wstring& color){
     if(color==L"yellow")return RGB(220,165,0);
     return GetSysColor(COLOR_WINDOWTEXT);
 }
-// Рисуем строки списка вручную, чтобы показать цвет папки, отступы и выделение.
+// Draw list rows manually to show folder colors, indentation and selection.
 void DrawChatItem(Context* ctx,const DRAWITEMSTRUCT* item){
     if(item->itemID==static_cast<UINT>(-1) || item->itemID>=ctx->chatRows.size())return;
     HDC dc=item->hDC;RECT row=item->rcItem;bool selected=(item->itemState&ODS_SELECTED)!=0;
@@ -638,8 +639,8 @@ void DrawChatItem(Context* ctx,const DRAWITEMSTRUCT* item){
     }
     if(old)SelectObject(dc,old);if(item->itemState&ODS_FOCUS)DrawFocusRect(dc,&item->rcItem);
 }
-// Обрабатываем события Node.js: подключение, модели, чаты, историю, поток ответа, ошибки и
-// подтверждения.
+// Handle bridge events for connection, models, chats, history, response streaming, errors and
+// approvals.
 void OnBridge(Context* ctx,const BridgeEvent& e){
     if(e.source!=ctx->bridge)return;
     auto value=[&](size_t n)->std::wstring{return n<e.fields.size()?e.fields[n]:L"";};
@@ -676,7 +677,7 @@ void OnBridge(Context* ctx,const BridgeEvent& e){
     }
     else if(e.kind=="disconnected"){ctx->ready=false;ctx->busy=false;SetWindowTextW(ctx->status,Tr(ctx,L"Нет соединения",L"Disconnected"));UpdateControls(ctx);}
 }
-// Главный обработчик AI-окна: создание, изменение размеров, нажатия, события bridge и закрытие.
+// Main AI window procedure: creation, resizing, user actions, bridge events and closing.
 LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     auto ctx=reinterpret_cast<Context*>(GetWindowLongPtrW(window,GWLP_USERDATA));
     if(msg==WM_CREATE){
@@ -834,8 +835,8 @@ HMENU CopyMenuTree(HMENU source,bool root){
     return copy;
 }
 
-// Открываем отдельное AI-окно, связанное с окном редактора; повторное нажатие поднимает
-// существующее окно.
+// Open a separate AI window associated with the editor; another click raises the existing
+// window.
 bool OpenWindow(Context* ctx) {
     if(IsWindow(currentAIWindow)){
         if(IsIconic(currentAIWindow))ShowWindow(currentAIWindow,SW_RESTORE);
@@ -858,8 +859,7 @@ bool OpenWindow(Context* ctx) {
     currentAIWindow=window;ShowWindow(window,IsZoomed(ctx->owner)?SW_SHOWMAXIMIZED:SW_SHOW);UpdateWindow(window);return true;
 }
 
-// Перехватываем команду своей кнопки. Остальные сообщения передаём следующему обработчику
-// редактора.
+// Intercept our button command and pass unrelated messages to the next editor window handler.
 LRESULT CALLBACK OwnerProc(HWND owner, UINT message, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR ref) {
     auto ctx=reinterpret_cast<Context*>(ref);
     if (message==WM_COMMAND && LOWORD(w)==ctx->command && reinterpret_cast<HWND>(l)==ctx->toolbar) {
@@ -881,8 +881,8 @@ bool IsOurThread(HWND window) {
     return IsWindow(window) && pid==GetCurrentProcessId() && thread==GetCurrentThreadId();
 }
 struct LegacyClose { Context* ctx; bool wasOpen; };
-// Перед обновлением не закрываем старое окно с активным ответом, настройками, черновиком,
-// вложениями или видимой перепиской.
+// Do not close an old window during upgrade if it has an active response, settings, a draft,
+// attachments or visible history.
 BOOL CALLBACK CheckLegacyChatWindow(HWND window,LPARAM raw){
     wchar_t cls[128]{};GetClassNameW(window,cls,128);auto safe=reinterpret_cast<bool*>(raw);
     if(!lstrcmpW(cls,L"SC2AIButton.Settings.v21") || !lstrcmpW(cls,L"SC2AIButton.Settings.v22") || !lstrcmpW(cls,L"SC2AIButton.Settings.v23") || !lstrcmpW(cls,L"SC2AIButton.Settings.v24")){*safe=false;return FALSE;}
@@ -918,8 +918,8 @@ unsigned LegacyMask(HWND toolbar){
     const wchar_t* props[]={kLegacyProperty1,kLegacyProperty2,kLegacyProperty3,kLegacyProperty4,kLegacyProperty5,kLegacyProperty6,kLegacyProperty7,kLegacyProperty8,kLegacyProperty9,kLegacyProperty10,kLegacyProperty11,kLegacyProperty12,kLegacyProperty13,kLegacyProperty14,kLegacyProperty15,kLegacyProperty16,kLegacyProperty17,kLegacyProperty18,kLegacyProperty19,kLegacyProperty20,kLegacyProperty21,kLegacyProperty22,kLegacyProperty23,kLegacyProperty24};
     unsigned mask=0;for(unsigned i=0;i<24;++i)if(GetPropW(toolbar,props[i]))mask|=1u<<i;return mask;
 }
-// Согласуем кнопку с предыдущими версиями DLL, которые могут остаться загруженными после
-// обновления на лету.
+// Reconcile the toolbar with older DLL versions that may remain loaded after an in-place
+// update.
 void Reconcile(Context* ctx){
     unsigned mask=LegacyMask(ctx->toolbar);
     if(mask!=ctx->legacyMask){
@@ -932,8 +932,8 @@ void Reconcile(Context* ctx){
 }
 
 // Called on the toolbar's GUI thread. The module must stay loaded until detach.
-// Устанавливаем кнопку в GUI-потоке панели. При ошибке снимаем обработчик и освобождаем созданные
-// ресурсы.
+// Install the button on the toolbar GUI thread. On failure, remove the handler and release
+// resources created here.
 extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int index, UINT command) {
     wchar_t cls[64]{};
     HWND owner=GetParent(toolbar);
@@ -997,7 +997,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
     return TRUE;
 }
 
-// Удаляем свою кнопку либо восстанавливаем предыдущее состояние и освобождаем собственные ресурсы.
+// Remove our button or restore its previous state, then release resources owned by this DLL.
 extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Detach(HWND toolbar, UINT command) {
     if (!IsOurThread(toolbar)) return FALSE;
     auto ctx=static_cast<Context*>(GetPropW(toolbar,kProperty));
@@ -1023,8 +1023,8 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Detach(HWND toolbar, UINT com
 
 namespace {
 // Only the observed module toolbar shape is accepted; ambiguous layouts are ignored.
-// Проверяем ожидаемую структуру панели и ищем Overview по F12. При неоднозначной или неподходящей
-// панели не вставляем кнопку.
+// Validate the expected toolbar layout and locate Overview by F12. Refuse insertion if the
+// toolbar is ambiguous or incompatible.
 bool FindInsertion(HWND toolbar, int& insertion) {
     int count=static_cast<int>(SendMessageW(toolbar,TB_BUTTONCOUNT,0,0));
     if (count<11 || count>150 || SendMessageW(toolbar,TB_COMMANDTOINDEX,kCommand,0)!=-1) return false;
@@ -1039,8 +1039,7 @@ bool FindInsertion(HWND toolbar, int& insertion) {
     insertion=overview;
     return true;
 }
-// Для подходящего окна устанавливаем кнопку или согласуем уже подключённую версию; прочие окна не
-// меняем.
+// Install or reconcile the button on compatible editor windows; leave other windows alone.
 BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     if (!IsOurThread(owner)) return TRUE;
     HWND toolbar=EditorModuleToolbar(owner);
@@ -1055,8 +1054,7 @@ BOOL CALLBACK InstallOnWindow(HWND owner, LPARAM) {
     } else if (FindInsertion(toolbar,index)) SC2AI_Attach(toolbar,index,kCommand);
     return TRUE;
 }
-// Служебное сообщение переносит изменение панели в GUI-поток редактора, которому принадлежат его
-// окна.
+// A private message moves toolbar changes to the editor GUI thread that owns its windows.
 LRESULT CALLBACK GetMessageHook(int code, WPARAM w, LPARAM l) {
     auto msg=reinterpret_cast<MSG*>(l);
     if (code>=0 && msg && !msg->hwnd && msg->message==scanMessage)
@@ -1071,8 +1069,8 @@ BOOL CALLBACK FindEditorThread(HWND window, LPARAM data) {
     }
     return TRUE;
 }
-// Примерно раз в 750 мс ищем поток редактора и новые окна; реальные изменения интерфейса выполняет
-// GUI-поток.
+// Approximately every 750 ms, find the editor thread and new windows. The GUI thread performs
+// the actual UI changes.
 DWORD WINAPI Worker(void*) {
     DWORD installedThread=0;
     for (;;) {
@@ -1090,8 +1088,8 @@ DWORD WINAPI Worker(void*) {
 }
 
 // The loader calls this once after loading the DLL into SC2Editor_x64.exe.
-// Загрузчик вызывает эту функцию после загрузки DLL. Повторный запуск той же версии не создаёт
-// второй рабочий поток.
+// Called by the loader after the DLL is loaded. A second start of the same version does not
+// create another worker.
 extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     wchar_t path[32768]{};DWORD length=GetModuleFileNameW(nullptr,path,32768);
     if (!length || length>=32768) return ERROR_BAD_EXE_FORMAT;
@@ -1104,7 +1102,8 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }
     CloseHandle(thread); return 0;
 }
-// Этот статус позволяет загрузчику отличить загрузку DLL от установки хотя бы одной кнопки.
+// This status lets the loader distinguish a loaded DLL from at least one successfully
+// installed button.
 extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Status(void*) {
     return InterlockedCompareExchange(&activeButtons,0,0)>0 ? ERROR_SUCCESS : ERROR_IO_PENDING;
 }
