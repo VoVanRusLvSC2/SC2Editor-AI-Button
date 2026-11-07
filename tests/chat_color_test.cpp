@@ -7,7 +7,16 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v33"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v34"))ai=h;return TRUE;}
+struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
+static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
+static DWORD WINAPI SelectFirstOutline(void* raw){
+    auto probe=static_cast<PopupProbe*>(raw);if(!SetThreadDesktop(probe->desktop))return 1;HWND popup=nullptr;
+    for(int i=0;i<100 && !popup;++i){EnumThreadWindows(probe->uiThread,FindMenu,reinterpret_cast<LPARAM>(&popup));if(!popup)Sleep(20);}
+    if(!popup)return 2;probe->found=true;auto menu=reinterpret_cast<HMENU>(SendMessageW(popup,0x01e1,0,0));
+    wchar_t first[256]{},second[256]{};if(menu && GetMenuItemCount(menu)>=2){GetMenuStringW(menu,0,first,256,MF_BYPOSITION);GetMenuStringW(menu,1,second,256,MF_BYPOSITION);probe->labels=wcsstr(first,L"usertext") && wcsstr(second,L"firsttext");}
+    PostMessageW(ai,WM_KEYDOWN,VK_DOWN,0);PostMessageW(ai,WM_KEYDOWN,VK_RETURN,0);Sleep(500);if(IsWindow(popup))PostMessageW(popup,WM_CANCELMODE,0,0);return 0;
+}
 static bool SavePreview(HWND window,const wchar_t* path){
     RECT r{};if(!GetWindowRect(window,&r))return false;int width=r.right-r.left,height=r.bottom-r.top;if(width<=0 || height<=0)return false;
     BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
@@ -45,13 +54,14 @@ int wmain(){
         CHARFORMAT2W format{};format.cbSize=sizeof(format);SendMessageW(edit,EM_GETCHARFORMAT,SCF_SELECTION,reinterpret_cast<LPARAM>(&format));return (format.dwMask&CFM_COLOR) && format.crTextColor==expected;
     };
     event("history",{L"You: usertext\r\n\r\nAI: firsttext **boldtext**\r\n\r\nsecondtext\r\n\r\n[bracketed reply]\r\n\r\n[Command]\r\n\r\nAI: thirdtext"});
+    if(!IsWindowEnabled(GetDlgItem(ai,123)))return 30;
+    CHARRANGE atEnd{-1,-1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&atEnd));
+    PopupProbe probe{GetCurrentThreadId(),desktop,false,false};HANDLE thread=CreateThread(nullptr,0,SelectFirstOutline,&probe,0,nullptr);if(!thread)return 31;
+    SendMessageW(ai,WM_COMMAND,MAKEWPARAM(123,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(ai,123)));
+    WaitForSingleObject(thread,3000);CloseHandle(thread);CHARRANGE jumped{};SendMessageW(edit,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&jumped));
+    if(!probe.found || !probe.labels || jumped.cpMin!=0 || jumped.cpMax!=0){std::printf("outline test: popup=%d labels=%d range=%ld,%ld\n",probe.found,probe.labels,jumped.cpMin,jumped.cpMax);return 32;}
     if(!check(L"usertext",RGB(35,40,46)) || !check(L"firsttext",RGB(0,105,170)) || !check(L"secondtext",RGB(0,105,170)) || !check(L"[bracketed reply]",RGB(0,105,170)) || !check(L"thirdtext",RGB(0,105,170)) || check(L"[Command]",RGB(104,113,123)))return 9;
     wchar_t title[256]{};GetWindowTextW(ai,title,256);if(wcsncmp(title,L"AI Assistant - ",15))return 28;
-    RECT before{},after{};GetWindowRect(GetDlgItem(ai,113),&before);MapWindowPoints(HWND_DESKTOP,ai,reinterpret_cast<POINT*>(&before),2);
-    int splitter=before.right+12,y=before.top+40;SendMessageW(ai,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(splitter,y));
-    SendMessageW(ai,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(splitter+100,y));SendMessageW(ai,WM_LBUTTONUP,0,MAKELPARAM(splitter+100,y));
-    GetWindowRect(GetDlgItem(ai,113),&after);MapWindowPoints(HWND_DESKTOP,ai,reinterpret_cast<POINT*>(&after),2);
-    if(after.right-before.right!=100 || !check(L"firsttext",RGB(0,105,170)))return 29;
     FINDTEXTEXW user{};user.chrg.cpMin=0;user.chrg.cpMax=-1;user.lpstrText=const_cast<wchar_t*>(L"usertext");
     if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&user))<0)return 19;
     CHARRANGE userSelection{user.chrgText.cpMin,user.chrgText.cpMin+1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&userSelection));
@@ -76,7 +86,7 @@ int wmain(){
     GetWindowRect(GetDlgItem(ai,119),&attachRect);GetWindowRect(GetDlgItem(ai,108),&sendRect);
     if(attachRect.left!=input.left || model.top<input.bottom || attachRect.right>model.left || model.right>sendRect.left || sendRect.right>input.right)return 15;
     for(int id:{108,109,119,120,121,122})if((GetWindowLongPtrW(GetDlgItem(ai,id),GWL_STYLE)&BS_TYPEMASK)!=BS_OWNERDRAW)return 26;
-    event("clear");event("line",{L"AI: "});event("delta",{L"before action"});
+    event("clear");if(IsWindowEnabled(GetDlgItem(ai,123)))return 33;event("line",{L"AI: "});event("delta",{L"before action"});
     event("event",{L"MCP: sc2editor / first"});event("event",{L"MCP: sc2editor / second"});event("delta",{L"after action"});SendMessageW(ai,WM_TIMER,2,0);
     if(!check(L"before action",RGB(0,105,170)) || !check(L"after action",RGB(0,105,170)) || check(L"MCP: sc2editor / first",RGB(104,113,123)))return 24;
     FINDTEXTEXW grouped{};grouped.chrg.cpMin=0;grouped.chrg.cpMax=-1;grouped.lpstrText=const_cast<wchar_t*>(L"Actions (2)");

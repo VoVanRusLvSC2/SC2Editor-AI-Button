@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <cstdio>
 #include "../src/chat_markdown.h"
+#include "../src/chat_outline.h"
 int main(){
     auto spans=ParseMarkdown(L"**Title**\n- Item `code` [site](https://example.com)\n```galaxy\nhello();\n```\nunfinished **bold");
     bool bold=false,code=false,copy=false,link=false,bullet=false,unfinished=false;
@@ -22,5 +23,9 @@ int main(){
     auto incomplete=ParseMarkdown(L"```galaxy\nhello");
     std::wstring raw;for(const auto& span:incomplete)raw+=span.text;
     if(raw!=L"```galaxy\nhello")return 3;
+    if(OutlineSnippet(L"First question\nmore detail",false)!=L"First question" ||
+       OutlineSnippet(L"Intro\n```galaxy\n# not a heading\n```\n## **Real heading**",true)!=L"Real heading" ||
+       OutlineSnippet(L"Intro\n**Key point:**\nDetails",true)!=L"Key point:" ||
+       OutlineSnippet(L"```\nonly code\n```",true)!=L"")return 5;
     std::puts("PASS: Markdown, links, code copy and incomplete stream markers");return 0;
 }

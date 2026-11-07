@@ -107,7 +107,8 @@
     "Response is too long": "Die Antwort ist zu lang",
     "Actions": "Aktionen",
     "Copy code": "Code kopieren",
-    "Editor chat": "Editor-Chat"
+    "Editor chat": "Editor-Chat",
+    "Contents": "Inhalt"
   },
   "esES": {
     "Disconnected": "desconectado",
@@ -217,7 +218,8 @@
     "Response is too long": "La respuesta es demasiado larga",
     "Actions": "Acciones",
     "Copy code": "Copiar código",
-    "Editor chat": "Chat del editor"
+    "Editor chat": "Chat del editor",
+    "Contents": "Contenido"
   },
   "ptBR": {
     "Could not attach the image. Use PNG, JPEG, GIF, or BMP up to 7 MB after conversion.": "Não foi possível anexar a imagem. Use PNG, JPEG, GIF ou BMP até 7 MB após a conversão.",
@@ -327,7 +329,8 @@
     "Response is too long": "A resposta é muito longa",
     "Actions": "Ações",
     "Copy code": "Copiar código",
-    "Editor chat": "Chat do editor"
+    "Editor chat": "Chat do editor",
+    "Contents": "Sumário"
   },
   "frFR": {
     " (from editor history)": " (extrait de l'historique de l'éditeur)",
@@ -437,7 +440,8 @@
     "Response is too long": "La réponse est trop longue",
     "Actions": "Actions",
     "Copy code": "Copier le code",
-    "Editor chat": "Chat de l’éditeur"
+    "Editor chat": "Chat de l’éditeur",
+    "Contents": "Sommaire"
   },
   "itIT": {
     "Open Claude Console": "Apri la console Claude",
@@ -547,7 +551,8 @@
     "Response is too long": "La risposta è troppo lunga",
     "Actions": "Azioni",
     "Copy code": "Copia codice",
-    "Editor chat": "Chat dell’editor"
+    "Editor chat": "Chat dell’editor",
+    "Contents": "Sommario"
   },
   "koKR": {
     "Open Claude Console": "Claude 콘솔 열기",
@@ -657,7 +662,8 @@
     "Response is too long": "응답이 너무 깁니다.",
     "Actions": "작업",
     "Copy code": "코드 복사",
-    "Editor chat": "편집기 채팅"
+    "Editor chat": "편집기 채팅",
+    "Contents": "목차"
   },
   "plPL": {
     "Open Claude Console": "Otwórz konsolę Claude",
@@ -767,7 +773,8 @@
     "Response is too long": "Odpowiedź jest za długa",
     "Actions": "Działania",
     "Copy code": "Kopiuj kod",
-    "Editor chat": "Czat edytora"
+    "Editor chat": "Czat edytora",
+    "Contents": "Spis treści"
   },
   "zhCN": {
     "Open Claude Console": "打开Claude控制台",
@@ -877,7 +884,8 @@
     "Response is too long": "回复太长",
     "Actions": "操作",
     "Copy code": "复制代码",
-    "Editor chat": "编辑器聊天"
+    "Editor chat": "编辑器聊天",
+    "Contents": "目录"
   },
   "zhTW": {
     " (from editor history)": " （取自編輯歷史）",
@@ -987,7 +995,8 @@
     "Response is too long": "回覆太長",
     "Actions": "操作",
     "Copy code": "複製程式碼",
-    "Editor chat": "編輯器聊天"
+    "Editor chat": "編輯器聊天",
+    "Contents": "目錄"
   },
   "esMX": {
     "Disconnected": "desconectado",
@@ -1097,6 +1106,7 @@
     "Response is too long": "La respuesta es demasiado larga",
     "Actions": "Acciones",
     "Copy code": "Copiar código",
-    "Editor chat": "Chat del editor"
+    "Editor chat": "Chat del editor",
+    "Contents": "Contenido"
   }
 }
