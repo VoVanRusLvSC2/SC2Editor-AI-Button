@@ -5,7 +5,7 @@
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v34"))newWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v35"))newWindow=h;return TRUE;}
 int wmain(int argc,wchar_t**argv){
     if(argc!=2)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,900,600,nullptr,nullptr,nullptr,nullptr);
@@ -25,6 +25,18 @@ int wmain(int argc,wchar_t**argv){
     if(SendMessageW(bar,TB_COMMANDTOINDEX,109,0)!=9 || SendMessageW(bar,TB_COMMANDTOINDEX,500,0)!=10)return 8;
     if(!attach(bar,10,500)){DWORD error=GetLastError();std::printf("attach failed: error=%lu ai=%lld overview=%lld\n",error,static_cast<long long>(SendMessageW(bar,TB_COMMANDTOINDEX,500,0)),static_cast<long long>(SendMessageW(bar,TB_COMMANDTOINDEX,109,0)));return 9;}
     if(SendMessageW(bar,TB_COMMANDTOINDEX,500,0)!=9 || SendMessageW(bar,TB_COMMANDTOINDEX,109,0)!=10)return 10;
+    // Simulate the Editor checking the inserted AI button instead of its F12 module while
+    // another module is still checked. Only Overview must remain selected afterwards.
+    SendMessageW(bar,TB_CHECKBUTTON,103,MAKELONG(TRUE,0));SendMessageW(bar,TB_CHECKBUTTON,111,MAKELONG(TRUE,0));
+    MSG before{};while(PeekMessageW(&before,nullptr,0,0,PM_REMOVE)){TranslateMessage(&before);DispatchMessageW(&before);}
+    if(!(SendMessageW(bar,TB_GETSTATE,103,0)&TBSTATE_CHECKED) || (SendMessageW(bar,TB_GETSTATE,109,0)&TBSTATE_CHECKED))return 16;
+    SetWindowTextW(owner,L"Data - [test]");SendMessageW(bar,TB_CHECKBUTTON,500,MAKELONG(TRUE,0));
+    while(PeekMessageW(&before,nullptr,0,0,PM_REMOVE)){TranslateMessage(&before);DispatchMessageW(&before);}
+    if(!(SendMessageW(bar,TB_GETSTATE,103,0)&TBSTATE_CHECKED) || (SendMessageW(bar,TB_GETSTATE,109,0)&TBSTATE_CHECKED))return 17;
+    SendMessageW(bar,TB_CHECKBUTTON,500,MAKELONG(FALSE,0));SetWindowTextW(owner,L"Overview - [test]");
+    SendMessageW(bar,TB_CHECKBUTTON,500,MAKELONG(TRUE,0));
+    MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+    if((SendMessageW(bar,TB_GETSTATE,103,0)&TBSTATE_CHECKED) || (SendMessageW(bar,TB_GETSTATE,500,0)&TBSTATE_CHECKED) || !(SendMessageW(bar,TB_GETSTATE,109,0)&TBSTATE_CHECKED) || !(SendMessageW(bar,TB_GETSTATE,111,0)&TBSTATE_CHECKED))return 15;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!newWindow || oldWindow)return 11;
     HWND copied=GetDlgItem(newWindow,100);if(!copied || !(SendMessageW(copied,TB_GETSTATE,109,0)&TBSTATE_ENABLED))return 12;
     if(!detach(bar,500) || SendMessageW(bar,TB_COMMANDTOINDEX,500,0)!=10 || SendMessageW(bar,TB_COMMANDTOINDEX,109,0)!=9)return 13;

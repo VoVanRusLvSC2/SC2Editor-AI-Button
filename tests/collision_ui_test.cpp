@@ -5,7 +5,7 @@
 #include <cwchar>
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v34"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v35"))ai=h;return TRUE;}
 static void Pump(){MSG m{};while(PeekMessageW(&m,nullptr,0,0,PM_REMOVE)){TranslateMessage(&m);DispatchMessageW(&m);}Sleep(20);}
 static bool Wait(bool(*check)(void*),void* p,DWORD ms){DWORD end=GetTickCount()+ms;while(GetTickCount()<end){Pump();if(check(p))return true;}return false;}
 static bool Ready(void* raw){auto w=static_cast<HWND>(raw);return IsWindowEnabled(GetDlgItem(w,107))&&SendMessageW(GetDlgItem(w,113),LB_GETCOUNT,0,0)>=3;}

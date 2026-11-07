@@ -7,7 +7,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v34"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v35"))ai=h;return TRUE;}
 struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
 static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
 static DWORD WINAPI SelectFirstOutline(void* raw){
@@ -82,6 +82,14 @@ int wmain(){
     if(!check(L"[Command]",RGB(104,113,123))){std::printf("action click failed: x=%ld y=%ld start=%ld end=%ld mask=%lld\n",point.x,point.y,action.chrgText.cpMin,action.chrgText.cpMax,static_cast<long long>(SendMessageW(edit,EM_GETEVENTMASK,0,0)));return 14;}
     event("line",{L"AI: "});event("delta",{L"streamed **text"});event("delta",{L"**"});SendMessageW(ai,WM_TIMER,2,0);
     if(!check(L"streamed text",RGB(0,105,170)))return 10;
+    CHARRANGE reading{0,4};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&reading));
+    event("delta",{L" and **more"});event("delta",{L" text**"});SendMessageW(ai,WM_TIMER,2,0);
+    CHARRANGE retained{};SendMessageW(edit,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&retained));
+    if(retained.cpMin!=reading.cpMin || retained.cpMax!=reading.cpMax || !check(L"streamed text and more text",RGB(0,105,170)) || !check(L"[Command]",RGB(104,113,123)))return 34;
+    FINDTEXTEXW streamedBold{};streamedBold.chrg.cpMin=0;streamedBold.chrg.cpMax=-1;streamedBold.lpstrText=const_cast<wchar_t*>(L"more text");
+    if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&streamedBold))<0)return 36;
+    CHARRANGE streamedSelection{streamedBold.chrgText.cpMin,streamedBold.chrgText.cpMin+1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&streamedSelection));
+    CHARFORMAT2W streamedFormat{};streamedFormat.cbSize=sizeof(streamedFormat);SendMessageW(edit,EM_GETCHARFORMAT,SCF_SELECTION,reinterpret_cast<LPARAM>(&streamedFormat));if(!(streamedFormat.dwEffects&CFE_BOLD))return 37;
     RECT input{},model{},attachRect{},sendRect{};GetWindowRect(GetDlgItem(ai,107),&input);GetWindowRect(GetDlgItem(ai,110),&model);
     GetWindowRect(GetDlgItem(ai,119),&attachRect);GetWindowRect(GetDlgItem(ai,108),&sendRect);
     if(attachRect.left!=input.left || model.top<input.bottom || attachRect.right>model.left || model.right>sendRect.left || sendRect.right>input.right)return 15;
@@ -100,6 +108,12 @@ int wmain(){
     SendMessageW(edit,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(copyPoint.x+2,copyPoint.y+5));SendMessageW(edit,WM_LBUTTONUP,0,MAKELPARAM(copyPoint.x+2,copyPoint.y+5));
     if(!OpenClipboard(ai))return 17;HANDLE clip=GetClipboardData(CF_UNICODETEXT);const wchar_t* copied=clip?static_cast<const wchar_t*>(GlobalLock(clip)):nullptr;
     bool copiedCode=copied && wcsstr(copied,L"print(1);")!=nullptr;if(copied)GlobalUnlock(clip);CloseClipboard();if(!copiedCode)return 18;
+    std::wstring longHistory=L"AI: ";for(int i=0;i<120;++i)longHistory+=L"A long conversation line for wheel scrolling.\r\n";
+    event("history",{longHistory});CHARRANGE endOfText{-1,-1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&endOfText));SendMessageW(edit,EM_SCROLLCARET,0,0);
+    POINT wheelBefore{},wheelAfter{};SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&wheelBefore));
+    SetFocus(edit);RECT wheelRect{};GetWindowRect(edit,&wheelRect);
+    SendMessageW(edit,WM_MOUSEWHEEL,MAKEWPARAM(0,WHEEL_DELTA),MAKELPARAM(wheelRect.left+20,wheelRect.top+20));SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&wheelAfter));
+    UINT wheelLines=0;if(SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&wheelLines,0) && wheelLines && wheelBefore.y>0 && wheelAfter.y>=wheelBefore.y){SendMessageW(edit,WM_VSCROLL,SB_LINEUP,0);POINT line{};SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&line));std::printf("wheel scroll: before=%ld after=%ld line=%ld lines=%u\n",wheelBefore.y,wheelAfter.y,line.y,wheelLines);return 35;}
     wchar_t previewPath[32768]{};DWORD previewLength=GetEnvironmentVariableW(L"SC2_CHAT_PREVIEW",previewPath,32768);
     if(previewLength && previewLength<32768){
         event("status",{L"Codex connected"});event("mcp",{L"SC2 MCP connected · map: Example.SC2Map"});

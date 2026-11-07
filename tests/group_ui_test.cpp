@@ -5,7 +5,7 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v34"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v35"))ai=h;return TRUE;}
 int wmain(){
     // Exercise the built-in folder fallback independently of local optional textures.
     SetEnvironmentVariableW(L"SC2_AI_FOLDER_ICON_PATH",L"?:\\not-a-folder-texture.png");

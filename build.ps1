@@ -23,6 +23,8 @@ try {
     if ($LASTEXITCODE) { throw 'File toolbar test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\overview_toolbar_test.cpp') /Fe:overview_toolbar_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Overview toolbar test build failed.' }
+    & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\overview_selection_test.cpp') /Fe:overview_selection_test.exe user32.lib comctl32.lib
+    if ($LASTEXITCODE) { throw 'Overview selection test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\editor_window_test.cpp') /Fe:editor_window_test.exe user32.lib comctl32.lib
     if ($LASTEXITCODE) { throw 'Editor window test build failed.' }
     & cl.exe /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /MT (Join-Path $PSScriptRoot 'tests\map_context_test.cpp') /Fe:map_context_test.exe user32.lib advapi32.lib
@@ -71,6 +73,8 @@ try {
     if ($LASTEXITCODE) { throw 'Locale UI test failed.' }
     & .\toolbar_test.exe
     if ($LASTEXITCODE) { throw 'Toolbar test failed.' }
+    & .\overview_selection_test.exe
+    if ($LASTEXITCODE) { throw 'Overview selection test failed.' }
     & .\file_toolbar_test.exe
     if ($LASTEXITCODE) { throw 'File toolbar test failed.' }
     & .\editor_window_test.exe

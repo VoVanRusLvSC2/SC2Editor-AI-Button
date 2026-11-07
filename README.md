@@ -13,6 +13,8 @@ Press **Enter** to send a message, or **Shift+Enter** to insert a new line. Belo
 
 The list icon next to Settings opens a compact table of contents for the currently displayed history. It lists your messages and response headings (or the start of an answer when there is no heading); select an item to jump to its message. It uses existing text, does not ask a model to summarize, and shows at most the latest 60 items.
 
+Streaming updates redraw the current assistant message rather than the full history. The mouse wheel scrolls the conversation twice as far per notch while retaining the Windows line setting and Ctrl+wheel behavior. Module activation triggers an immediate toolbar scan, with a periodic scan as a fallback. If the inserted AI button is incorrectly selected on the matching native F12 Overview window, the native module selection is corrected; ambiguous titles or shortcuts are left untouched.
+
 The AI toolbar exposes the Editor's New, Open, and Save commands, identified by the standard Ctrl+N, Ctrl+O, and Ctrl+S labels on the native toolbar. Their availability follows the native Editor; custom shortcuts or inaccessible labels may prevent discovery.
 
 Game installation and user paths are discovered locally, and module windows are identified independently of their caption language. The executable version and toolbar layout are checked to avoid attaching to unsupported builds. Native tests have run on Windows 11 x64; automated builds also run on Windows Server 2022 and 2025. This does not establish compatibility with every Windows version, UI scale, or Editor language. Chats require compatible Node.js and Codex or Claude installations.
