@@ -17,7 +17,7 @@ static BOOL CALLBACK Find(HWND h, LPARAM) {
     DWORD pid=0; GetWindowThreadProcessId(h,&pid);
     if (pid!=targetPid) return TRUE;
     wchar_t cls[128]{},title[1024]{}; GetClassNameW(h,cls,128); GetWindowTextW(h,title,1024);
-    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v25")) aiWindow=h;
+    if (!legacyOpen && !lstrcmpW(cls,L"SC2AIButton.Window.v27")) aiWindow=h;
     if (legacyOpen==4 && !lstrcmpW(cls,L"SC2AIButton.Window.v4")) aiWindow=h;
     if (legacyOpen==12 && !lstrcmpW(cls,L"SC2AIButton.Window.v12")) aiWindow=h;
     if (legacyOpen==11 && !lstrcmpW(cls,L"SC2AIButton.Window.v11")) aiWindow=h;

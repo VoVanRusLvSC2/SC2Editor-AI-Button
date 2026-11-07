@@ -5,7 +5,7 @@
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v25"))newWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v27"))newWindow=h;return TRUE;}
 int wmain(int argc,wchar_t**argv){
     if(argc!=2)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
     HWND owner=CreateWindowExW(0,L"STATIC",L"test",WS_OVERLAPPEDWINDOW,-30000,-30000,900,600,nullptr,nullptr,nullptr,nullptr);

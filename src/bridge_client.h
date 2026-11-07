@@ -6,6 +6,6 @@
 struct BridgeState;
 struct BridgeEvent { BridgeState* source; std::string kind; std::vector<std::wstring> fields; };
 constexpr UINT WM_AI_BRIDGE = WM_APP + 501;
-BridgeState* StartBridge(HWND window, HMODULE module, const std::wstring& workspace, bool claude, bool russian);
+BridgeState* StartBridge(HWND window, HMODULE module, const std::wstring& workspace, bool claude, const std::wstring& locale);
 bool SendBridge(BridgeState* state, const char* command, const std::vector<std::wstring>& fields = {});
 void StopBridge(BridgeState* state);

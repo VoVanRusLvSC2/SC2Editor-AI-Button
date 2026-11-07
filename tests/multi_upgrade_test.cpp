@@ -7,7 +7,7 @@ using Detach=BOOL (WINAPI*)(HWND,UINT);
 struct Module { HMODULE h;Attach attach;Detach detach; };
 static HWND oldPanel,newPanel,version21Panel,version22Panel,version23Panel;
 static BOOL CALLBACK Child(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v3"))oldPanel=h;return TRUE;}
-static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v25") && !GetWindow(h,GW_OWNER))newPanel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v21") && !GetWindow(h,GW_OWNER))version21Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v22") && !GetWindow(h,GW_OWNER))version22Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v23") && !GetWindow(h,GW_OWNER))version23Panel=h;return TRUE;}
+static BOOL CALLBACK Top(HWND h,LPARAM) {wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v27") && !GetWindow(h,GW_OWNER))newPanel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v21") && !GetWindow(h,GW_OWNER))version21Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v22") && !GetWindow(h,GW_OWNER))version22Panel=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v23") && !GetWindow(h,GW_OWNER))version23Panel=h;return TRUE;}
 int wmain(int argc,wchar_t**argv) {
     if(argc!=24)return 1;
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;
@@ -43,5 +43,5 @@ int wmain(int argc,wchar_t**argv) {
     for(int i=23;i>=0;--i)if(!modules[i].detach(bar,500))return 12;
     if(SendMessageW(bar,TB_BUTTONCOUNT,0,0)!=2)return 13;
     for(auto m:modules)FreeLibrary(m.h);DestroyWindow(owner);ImageList_Destroy(images);
-    std::puts("PASS: previous versions and v25 coexist; separate AI window opens and can reopen");return 0;
+    std::puts("PASS: previous versions and the current version coexist; separate AI window opens and can reopen");return 0;
 }

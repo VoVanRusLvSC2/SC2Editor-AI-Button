@@ -16,6 +16,8 @@
 #include "map_context.h"
 #include "image_attachment.h"
 #include "editor_window.h"
+#include "editor_locale.h"
+#include "locales_generated.h"
 
 // Versioned properties and class names identify old DLL instances after an in-place update and
 // help prevent duplicate buttons.
@@ -44,7 +46,9 @@ constexpr wchar_t kLegacyProperty21[] = L"SC2AIButton.context.v21";
 constexpr wchar_t kLegacyProperty22[] = L"SC2AIButton.context.v22";
 constexpr wchar_t kLegacyProperty23[] = L"SC2AIButton.context.v23";
 constexpr wchar_t kLegacyProperty24[] = L"SC2AIButton.context.v24";
-constexpr wchar_t kProperty[] = L"SC2AIButton.context.v25";
+constexpr wchar_t kLegacyProperty25[] = L"SC2AIButton.context.v25";
+constexpr wchar_t kLegacyProperty26[] = L"SC2AIButton.context.v26";
+constexpr wchar_t kProperty[] = L"SC2AIButton.context.v27";
 constexpr wchar_t kLegacyWindowClass1[] = L"SC2AIButton.Window.v1";
 constexpr wchar_t kLegacyWindowClass2[] = L"SC2AIButton.Window.v2";
 constexpr wchar_t kLegacyWindowClass3[] = L"SC2AIButton.Window.v3";
@@ -69,7 +73,9 @@ constexpr wchar_t kLegacyWindowClass21[] = L"SC2AIButton.Window.v21";
 constexpr wchar_t kLegacyWindowClass22[] = L"SC2AIButton.Window.v22";
 constexpr wchar_t kLegacyWindowClass23[] = L"SC2AIButton.Window.v23";
 constexpr wchar_t kLegacyWindowClass24[] = L"SC2AIButton.Window.v24";
-constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v25";
+constexpr wchar_t kLegacyWindowClass25[] = L"SC2AIButton.Window.v25";
+constexpr wchar_t kLegacyWindowClass26[] = L"SC2AIButton.Window.v26";
+constexpr wchar_t kWindowClass[] = L"SC2AIButton.Window.v27";
 constexpr size_t kMaxImages=5;
 constexpr ULONGLONG kMaxImagesBytes=20ull*1024*1024;
 constexpr UINT kCommand = 60000;
@@ -95,20 +101,10 @@ struct Context {
     int fileCommands[3];
     HIMAGELIST aiImages;
     BridgeState* bridge; HWND chatList,mcp; HFONT chatFont;
-    std::vector<std::wstring> modelIds,chatRows,collapsedGroups;std::vector<ChatItem> chats;std::wstring selectedId;bool ready,busy,awaitingAnswer,pendingSend,windowActive,russian,rich;
+    std::vector<std::wstring> modelIds,chatRows,collapsedGroups;std::vector<ChatItem> chats;std::wstring selectedId,locale;bool ready,busy,awaitingAnswer,pendingSend,windowActive,rich;
     HWND attach,previews[kMaxImages],removes[kMaxImages];std::vector<ImageAttachment> attachments;
 };
-const wchar_t* Tr(Context* ctx,const wchar_t* ru,const wchar_t* en){return ctx->russian?ru:en;}
-// Detect the language from the editor menu; fall back to the Windows UI language if the menu
-// is unavailable.
-bool RussianEditor(HWND owner){
-    HMENU menu=GetMenu(owner);wchar_t first[128]{};
-    if(menu && GetMenuStringW(menu,0,first,128,MF_BYPOSITION)>0){
-        std::wstring label(first);return label.find(L"Файл")!=std::wstring::npos || label.find(L"файл")!=std::wstring::npos;
-    }
-    return PRIMARYLANGID(GetUserDefaultUILanguage())==LANG_RUSSIAN;
-}
-
+const wchar_t* Tr(Context* ctx,const wchar_t* ru,const wchar_t* en){return TranslateText(ctx->locale.c_str(),ru,en);}
 // Draw beveled steel-blue lettering at the toolbar's native image dimensions.
 HBITMAP CreateAIIcon(int width,int height) {
     if (width<12 || height<12 || width>256 || height>256) return nullptr;
@@ -340,7 +336,7 @@ LRESULT CALLBACK SettingsProc(HWND window,UINT msg,WPARAM w,LPARAM l){
 void OpenSettings(Context* ctx,HWND owner){
     if(IsWindow(ctx->settings)){SetForegroundWindow(ctx->settings);return;}
     WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=SettingsProc;wc.hInstance=moduleHandle;
-    wc.lpszClassName=L"SC2AIButton.Settings.v25";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.lpszClassName=L"SC2AIButton.Settings.v27";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc) && GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
     RECT r{};GetWindowRect(owner,&r);
@@ -428,12 +424,23 @@ bool CopyToolbar(Context* ctx,HWND window) {
 }
 // Recalculate control positions when the window is resized. Measure the chat heading text when
 // laying out its buttons.
+int ControlTextWidth(HWND control) {
+    wchar_t text[256]{};GetWindowTextW(control,text,256);SIZE size{};HDC dc=GetDC(control);
+    if(!dc)return 0;auto font=reinterpret_cast<HFONT>(SendMessageW(control,WM_GETFONT,0,0));
+    auto old=font?SelectObject(dc,font):nullptr;GetTextExtentPoint32W(dc,text,lstrlenW(text),&size);
+    if(old)SelectObject(dc,old);ReleaseDC(control,dc);return size.cx;
+}
 void LayoutControls(Context* ctx,HWND window) {
     RECT r{};GetClientRect(window,&r);int width=r.right,height=r.bottom;
     SendMessageW(ctx->aiToolbar,TB_AUTOSIZE,0,0);
     RECT bar{};GetWindowRect(ctx->aiToolbar,&bar);int top=bar.bottom-bar.top+16;
-    int side=width<1100?220:280, sidebarX=18, mainX=side+22, mainW=width-mainX-22;
-    if(mainW<160)mainW=160;
+    int sidebarX=18,side=width<1100?220:280;
+    int labelW=ControlTextWidth(ctx->history);if(labelW<1)labelW=48;
+    int allW=(std::max)(width<1100?32:38,ControlTextWidth(ctx->showAll)+14);
+    int editorW=(std::max)(width<1100?72:86,ControlTextWidth(ctx->showEditor)+14);
+    int deleteW=(std::max)(width<1100?38:50,ControlTextWidth(ctx->deleteChat)+14);
+    side=(std::max)(side,labelW+allW+editorW+deleteW+9+30);
+    int mainX=side+22,mainW=width-mainX-22;if(mainW<160)mainW=160;
     MoveWindow(ctx->heading,mainX,top,90,24,TRUE);MoveWindow(ctx->status,mainX+100,top,190,24,TRUE);
     int modelWidth=mainW-430;if(modelWidth>200)modelWidth=200;if(modelWidth<90)modelWidth=90;
     MoveWindow(ctx->model,mainX+290,top-4,modelWidth,200,TRUE);
@@ -442,14 +449,7 @@ void LayoutControls(Context* ctx,HWND window) {
     int inputY=height-80;if(inputY<top+160)inputY=top+160;
     int attachmentSpace=ctx->attachments.empty()?0:64;
     MoveWindow(ctx->description,mainX,top+60,mainW,inputY-top-72-attachmentSpace,TRUE);
-    bool narrow=side<250;int allW=narrow?32:38,editorW=narrow?72:86,deleteW=narrow?38:50;
-    // Measure the translated heading, then keep the whole header inside the list width.
-    wchar_t label[64]{};GetWindowTextW(ctx->history,label,64);SIZE labelSize{};
-    HDC dc=GetDC(ctx->history);if(dc){auto font=reinterpret_cast<HFONT>(SendMessageW(ctx->history,WM_GETFONT,0,0));auto old=font?SelectObject(dc,font):nullptr;
-        GetTextExtentPoint32W(dc,label,lstrlenW(label),&labelSize);if(old)SelectObject(dc,old);ReleaseDC(ctx->history,dc);}
-    int labelW=labelSize.cx>0?labelSize.cx:48;int gap=3,available=side-30;
-    int overflow=labelW+allW+editorW+deleteW+gap*3-available;if(overflow>0)editorW-=overflow;
-    if(editorW<58)editorW=58;
+    int gap=3;
     int allX=sidebarX+labelW+gap,editorX=allX+allW+gap,deleteX=editorX+editorW+gap;
     MoveWindow(ctx->history,sidebarX,top-4,labelW,26,TRUE);
     MoveWindow(ctx->showAll,allX,top-4,allW,26,TRUE);
@@ -519,7 +519,9 @@ LRESULT CALLBACK InputProc(HWND input,UINT msg,WPARAM w,LPARAM l,UINT_PTR id,DWO
 // Open the standard file picker and process the selected images.
 void ChooseImage(Context* ctx){
     wchar_t file[32768]{};OPENFILENAMEW dialog{};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=ctx->window;
-    dialog.lpstrFilter=Tr(ctx,L"Изображения (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0Все файлы\0*.*\0\0",L"Images (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0All files\0*.*\0\0");
+    std::wstring filter=Tr(ctx,L"Изображения",L"Images");filter+=L" (*.png;*.jpg;*.jpeg;*.gif;*.bmp)";filter.push_back(L'\0');
+    filter+=L"*.png;*.jpg;*.jpeg;*.gif;*.bmp";filter.push_back(L'\0');filter+=Tr(ctx,L"Все файлы",L"All files");
+    filter.push_back(L'\0');filter+=L"*.*";filter.push_back(L'\0');filter.push_back(L'\0');dialog.lpstrFilter=filter.c_str();
     dialog.lpstrFile=file;dialog.nMaxFile=32768;dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER|OFN_ALLOWMULTISELECT;
     if(GetOpenFileNameW(&dialog)){
         std::wstring first(file);const wchar_t* next=file+first.size()+1;
@@ -548,7 +550,9 @@ void AppendEntry(Context* ctx,const std::wstring& text,bool aiContinuation=false
     if(text.empty())return;
     Append(ctx,L"\r\n");
     size_t prefix=0;COLORREF color=RGB(28,83,132);bool ai=aiContinuation;
-    if(text.rfind(L"Вы: ",0)==0)prefix=4;
+    std::wstring userPrefix=Tr(ctx,L"Вы: ",L"You: ");
+    if(text.rfind(userPrefix,0)==0)prefix=userPrefix.size();
+    else if(text.rfind(L"Вы: ",0)==0)prefix=4;
     else if(text.rfind(L"You: ",0)==0)prefix=5;
     else if(text.rfind(L"AI: ",0)==0){prefix=4;ai=true;}
     else if(text==L"AI:"){prefix=3;ai=true;}
@@ -563,7 +567,11 @@ void RenderHistory(Context* ctx,const std::wstring& history){
     while(start<history.size()){
         size_t end=history.find(L"\r\n\r\n",start);auto entry=history.substr(start,end==std::wstring::npos?end:end-start);
         if(entry.rfind(L"AI:",0)==0)ai=true;
-        else if(entry.rfind(L"Вы: ",0)==0 || entry.rfind(L"You: ",0)==0 || entry.rfind(L"[MCP:",0)==0 || entry.rfind(L"[Команда",0)==0 || entry.rfind(L"[Command",0)==0 || entry.rfind(L"[Изменения файлов",0)==0 || entry.rfind(L"[File changes",0)==0)ai=false;
+        else if(entry.rfind(Tr(ctx,L"Вы: ",L"You: "),0)==0 || entry.rfind(L"Вы: ",0)==0 || entry.rfind(L"You: ",0)==0 ||
+                entry.rfind(L"[MCP:",0)==0 || entry.rfind(std::wstring(L"[")+Tr(ctx,L"Команда",L"Command"),0)==0 ||
+                entry.rfind(std::wstring(L"[")+Tr(ctx,L"Изменения файлов",L"File changes"),0)==0 ||
+                entry.rfind(L"[Команда",0)==0 || entry.rfind(L"[Command",0)==0 ||
+                entry.rfind(L"[Изменения файлов",0)==0 || entry.rfind(L"[File changes",0)==0)ai=false;
         AppendEntry(ctx,entry,ai);if(end==std::wstring::npos)break;start=end+4;
     }
     SendMessageW(ctx->description,WM_VSCROLL,SB_BOTTOM,0);
@@ -683,7 +691,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if(msg==WM_CREATE){
         auto cs=reinterpret_cast<CREATESTRUCTW*>(l);ctx=static_cast<Context*>(cs->lpCreateParams);
         SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(ctx));ctx->window=window;
-        ctx->russian=RussianEditor(ctx->owner);
+        ctx->locale=ReadEditorLocale(ctx->owner);
         if(!CopyToolbar(ctx,window))return -1;
         SetTimer(window,1,500,nullptr);
         ctx->heading=Control(window,L"STATIC",L"Codex",SS_LEFT,kHeading);
@@ -716,7 +724,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         if(!ctx->heading||!ctx->status||!ctx->description||!ctx->history||!ctx->input||!ctx->send||!ctx->model||!ctx->config||!ctx->chatList||!ctx->mcp||!ctx->attach||!ctx->showAll||!ctx->showEditor||!ctx->deleteChat)return -1;
         if(!SetWindowSubclass(ctx->input,InputProc,1,reinterpret_cast<DWORD_PTR>(ctx)))return -1;
         ctx->ready=false;ctx->busy=false;UpdateControls(ctx);
-        ctx->bridge=StartBridge(window,moduleHandle,Workspace(ctx->owner),selectedClaude,ctx->russian);
+        ctx->bridge=StartBridge(window,moduleHandle,Workspace(ctx->owner),selectedClaude,ctx->locale);
         if(ctx->bridge)SendMapContext(ctx);
         if(!ctx->bridge){SetWindowTextW(ctx->status,Tr(ctx,L"Нет соединения",L"Disconnected"));SetWindowTextW(ctx->description,Tr(ctx,L"Не удалось запустить помощник. Проверьте установку Node.js и наличие папки bridge рядом с DLL.",L"Could not start the assistant. Check Node.js and the bridge folder next to the DLL."));}
         SelectProvider(ctx,selectedClaude);return 0;
@@ -885,19 +893,21 @@ struct LegacyClose { Context* ctx; bool wasOpen; };
 // attachments or visible history.
 BOOL CALLBACK CheckLegacyChatWindow(HWND window,LPARAM raw){
     wchar_t cls[128]{};GetClassNameW(window,cls,128);auto safe=reinterpret_cast<bool*>(raw);
-    if(!lstrcmpW(cls,L"SC2AIButton.Settings.v21") || !lstrcmpW(cls,L"SC2AIButton.Settings.v22") || !lstrcmpW(cls,L"SC2AIButton.Settings.v23") || !lstrcmpW(cls,L"SC2AIButton.Settings.v24")){*safe=false;return FALSE;}
-    if(lstrcmpW(cls,kLegacyWindowClass21) && lstrcmpW(cls,kLegacyWindowClass22) && lstrcmpW(cls,kLegacyWindowClass23) && lstrcmpW(cls,kLegacyWindowClass24))return TRUE;
+    if(!lstrcmpW(cls,L"SC2AIButton.Settings.v21") || !lstrcmpW(cls,L"SC2AIButton.Settings.v22") || !lstrcmpW(cls,L"SC2AIButton.Settings.v23") || !lstrcmpW(cls,L"SC2AIButton.Settings.v24") || !lstrcmpW(cls,L"SC2AIButton.Settings.v25") || !lstrcmpW(cls,L"SC2AIButton.Settings.v26")){*safe=false;return FALSE;}
+    if(lstrcmpW(cls,kLegacyWindowClass21) && lstrcmpW(cls,kLegacyWindowClass22) && lstrcmpW(cls,kLegacyWindowClass23) && lstrcmpW(cls,kLegacyWindowClass24) && lstrcmpW(cls,kLegacyWindowClass25) && lstrcmpW(cls,kLegacyWindowClass26))return TRUE;
     HWND input=GetDlgItem(window,kInput),history=GetDlgItem(window,kDescription),list=GetDlgItem(window,kChatList),send=GetDlgItem(window,kSend);
     wchar_t label[64]{};GetWindowTextW(send,label,64);
+    const wchar_t* locales[]={L"enUS",L"ruRU",L"deDE",L"esES",L"esMX",L"frFR",L"itIT",L"koKR",L"plPL",L"ptBR",L"zhCN",L"zhTW"};
+    bool sendLabel=false;for(auto locale:locales)if(!lstrcmpW(label,TranslateText(locale,L"Отправить",L"Send"))){sendLabel=true;break;}
     if(!input || !history || !list || !send || GetWindowTextLengthW(input)!=0 || GetWindowTextLengthW(history)!=0 ||
-       SendMessageW(list,LB_GETCURSEL,0,0)!=0 || (lstrcmpW(label,L"Send") && lstrcmpW(label,L"Отправить")) || !IsWindowEnabled(input)) *safe=false;
+       SendMessageW(list,LB_GETCURSEL,0,0)!=0 || !sendLabel || !IsWindowEnabled(input)) *safe=false;
     for(int i=0;i<static_cast<int>(kMaxImages);++i){HWND preview=GetDlgItem(window,kPreviewBase+i);if(preview && (GetWindowLongPtrW(preview,GWL_STYLE)&WS_VISIBLE))*safe=false;}
     return *safe?TRUE:FALSE;
 }
 BOOL CALLBACK CloseLegacyWindow(HWND window, LPARAM raw) {
     auto state=reinterpret_cast<LegacyClose*>(raw);
     wchar_t cls[128]{}; GetClassNameW(window,cls,128);
-    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12) || !lstrcmpW(cls,kLegacyWindowClass13) || !lstrcmpW(cls,kLegacyWindowClass14) || !lstrcmpW(cls,kLegacyWindowClass15) || !lstrcmpW(cls,kLegacyWindowClass16) || !lstrcmpW(cls,kLegacyWindowClass17) || !lstrcmpW(cls,kLegacyWindowClass18) || !lstrcmpW(cls,kLegacyWindowClass19) || !lstrcmpW(cls,kLegacyWindowClass20) || !lstrcmpW(cls,kLegacyWindowClass21) || !lstrcmpW(cls,kLegacyWindowClass22) || !lstrcmpW(cls,kLegacyWindowClass23) || !lstrcmpW(cls,kLegacyWindowClass24)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
+    if (((!lstrcmpW(cls,kLegacyWindowClass7) || !lstrcmpW(cls,kLegacyWindowClass8) || !lstrcmpW(cls,kLegacyWindowClass9) || !lstrcmpW(cls,kLegacyWindowClass10) || !lstrcmpW(cls,kLegacyWindowClass11) || !lstrcmpW(cls,kLegacyWindowClass12) || !lstrcmpW(cls,kLegacyWindowClass13) || !lstrcmpW(cls,kLegacyWindowClass14) || !lstrcmpW(cls,kLegacyWindowClass15) || !lstrcmpW(cls,kLegacyWindowClass16) || !lstrcmpW(cls,kLegacyWindowClass17) || !lstrcmpW(cls,kLegacyWindowClass18) || !lstrcmpW(cls,kLegacyWindowClass19) || !lstrcmpW(cls,kLegacyWindowClass20) || !lstrcmpW(cls,kLegacyWindowClass21) || !lstrcmpW(cls,kLegacyWindowClass22) || !lstrcmpW(cls,kLegacyWindowClass23) || !lstrcmpW(cls,kLegacyWindowClass24) || !lstrcmpW(cls,kLegacyWindowClass25) || !lstrcmpW(cls,kLegacyWindowClass26)) && !GetWindow(window,GW_OWNER)) || ((!lstrcmpW(cls,kLegacyWindowClass1) || !lstrcmpW(cls,kLegacyWindowClass2) || !lstrcmpW(cls,kLegacyWindowClass4) || !lstrcmpW(cls,kLegacyWindowClass5) || !lstrcmpW(cls,kLegacyWindowClass6)) && GetWindow(window,GW_OWNER)==state->ctx->owner)) {
         state->wasOpen=true;
         DestroyWindow(window);
     }
@@ -915,8 +925,8 @@ BOOL CALLBACK CloseStaleOverlay(HWND window, LPARAM raw){
     return TRUE;
 }
 unsigned LegacyMask(HWND toolbar){
-    const wchar_t* props[]={kLegacyProperty1,kLegacyProperty2,kLegacyProperty3,kLegacyProperty4,kLegacyProperty5,kLegacyProperty6,kLegacyProperty7,kLegacyProperty8,kLegacyProperty9,kLegacyProperty10,kLegacyProperty11,kLegacyProperty12,kLegacyProperty13,kLegacyProperty14,kLegacyProperty15,kLegacyProperty16,kLegacyProperty17,kLegacyProperty18,kLegacyProperty19,kLegacyProperty20,kLegacyProperty21,kLegacyProperty22,kLegacyProperty23,kLegacyProperty24};
-    unsigned mask=0;for(unsigned i=0;i<24;++i)if(GetPropW(toolbar,props[i]))mask|=1u<<i;return mask;
+    const wchar_t* props[]={kLegacyProperty1,kLegacyProperty2,kLegacyProperty3,kLegacyProperty4,kLegacyProperty5,kLegacyProperty6,kLegacyProperty7,kLegacyProperty8,kLegacyProperty9,kLegacyProperty10,kLegacyProperty11,kLegacyProperty12,kLegacyProperty13,kLegacyProperty14,kLegacyProperty15,kLegacyProperty16,kLegacyProperty17,kLegacyProperty18,kLegacyProperty19,kLegacyProperty20,kLegacyProperty21,kLegacyProperty22,kLegacyProperty23,kLegacyProperty24,kLegacyProperty25,kLegacyProperty26};
+    unsigned mask=0;for(unsigned i=0;i<26;++i)if(GetPropW(toolbar,props[i]))mask|=1u<<i;return mask;
 }
 // Reconcile the toolbar with older DLL versions that may remain loaded after an in-place
 // update.
@@ -943,7 +953,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SC2AI_Attach(HWND toolbar, int inde
     if(auto existing=static_cast<Context*>(GetPropW(toolbar,kProperty))){Reconcile(existing);SetLastError(ERROR_ALREADY_EXISTS);return FALSE;}
     LRESULT count=SendMessageW(toolbar,TB_BUTTONCOUNT,0,0);
     LRESULT current=SendMessageW(toolbar,TB_COMMANDTOINDEX,command,0);
-    int legacy=0;unsigned legacyMask=LegacyMask(toolbar);for(int version=24;version>=1;--version)if(legacyMask&(1u<<(version-1))){legacy=version;break;}
+    int legacy=0;unsigned legacyMask=LegacyMask(toolbar);for(int version=26;version>=1;--version)if(legacyMask&(1u<<(version-1))){legacy=version;break;}
     if(legacy>=21){bool safe=true;EnumThreadWindows(GetCurrentThreadId(),CheckLegacyChatWindow,reinterpret_cast<LPARAM>(&safe));if(!safe){SetLastError(ERROR_BUSY);return FALSE;}}
     if (count<0 || index<0 || index>count || (legacy ? current!=index : current!=-1)) {SetLastError(ERROR_INVALID_INDEX);return FALSE;}
     auto ctx=new(std::nothrow) Context{};
@@ -1096,7 +1106,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SC2AI_Start(void*) {
     const wchar_t* name=wcsrchr(path,L'\\'); name=name?name+1:path;
     if (lstrcmpiW(name,L"SC2Editor_x64.exe")) return ERROR_BAD_EXE_FORMAT;
     if (InterlockedCompareExchange(&started,1,0)!=0) return ERROR_ALREADY_EXISTS;
-    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v25");
+    scanMessage=RegisterWindowMessageW(L"SC2AIButton.Scan.v27");
     if (!scanMessage) { InterlockedExchange(&started,0); return GetLastError(); }
     HANDLE thread=CreateThread(nullptr,0,Worker,nullptr,0,nullptr);
     if (!thread) { InterlockedExchange(&started,0); return GetLastError(); }

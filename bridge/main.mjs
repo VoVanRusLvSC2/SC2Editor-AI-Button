@@ -14,8 +14,11 @@ import {createMcpFreshener} from './mcp_refresh.mjs';
 const b64 = s => Buffer.from(String(s ?? ''), 'utf8').toString('base64');
 const un64 = s => Buffer.from(s || '', 'base64').toString('utf8');
 const emit = (kind, ...values) => process.stdout.write([kind, ...values.map(b64)].join('\t') + '\n');
-const russian=process.argv[4]==='ru';
-const tr=(ru,en)=>russian?ru:en;
+const locale = process.argv[4] || 'enUS';
+const russian = locale === 'ru' || locale === 'ruRU';
+// Keep the same catalog as the native UI; unknown locales fall back to English.
+const translations = JSON.parse(readFileSync(new URL('./locales.json', import.meta.url), 'utf8'));
+const tr = (ru,en) => russian ? ru : (translations[locale]?.[en] ?? en);
 const cwd = process.argv[2] && existsSync(process.argv[2]) ? process.argv[2] : process.cwd();
 // Current window state: provider, model, chat and running request. generation helps discard
 // stale asynchronous results.
