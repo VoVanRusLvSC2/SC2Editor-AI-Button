@@ -9,12 +9,14 @@ import {pathToFileURL, fileURLToPath} from 'node:url';
 const b64 = s => Buffer.from(String(s ?? ''), 'utf8').toString('base64');
 const un64 = s => Buffer.from(s || '', 'base64').toString('utf8');
 const emit = (kind, ...values) => process.stdout.write([kind, ...values.map(b64)].join('\t') + '\n');
+const russian=process.argv[4]==='ru';
+const tr=(ru,en)=>russian?ru:en;
 const cwd = process.argv[2] && existsSync(process.argv[2]) ? process.argv[2] : process.cwd();
 let provider = 'codex', model = '', selected = '', running = null, generation = 0;
-let mapContext={path:'',dirty:false,caption:'',windowId:'',processId:'',inferred:false},mcpStatus='SC2 MCP: проверка...';
+let mapContext={path:'',dirty:false,caption:'',windowId:'',processId:'',inferred:false},mcpStatus=tr('SC2 MCP: проверка...','SC2 MCP: checking...');
 function showContext(){
   const name=mapContext.path?path.basename(mapContext.path):'';
-  emit('mcp',mcpStatus+' · '+(name?`карта: ${name}${mapContext.inferred?' (по истории редактора)':''}${mapContext.dirty?' (есть несохранённые изменения)':''}`:'карта не определена'));
+  emit('mcp',mcpStatus+' · '+(name?`${tr('карта','map')}: ${name}${mapContext.inferred?tr(' (по истории редактора)',' (from editor history)'):''}${mapContext.dirty?tr(' (есть несохранённые изменения)',' (unsaved changes)'):''}`:tr('карта не определена','map not identified')));
 }
 function mapPrompt(text){
   const map=mapContext.path
@@ -36,21 +38,21 @@ class AppServer{
   constructor(exe){this.proc=spawn(exe,[...(process.env.SC2_AI_CODEX_EXTRA_ARGS ? JSON.parse(process.env.SC2_AI_CODEX_EXTRA_ARGS) : []),'app-server','--listen','stdio://'],{stdio:['pipe','pipe','pipe'],windowsHide:true});this.id=1;this.pending=new Map();this.ready=false;
     createInterface({input:this.proc.stdout}).on('line',line=>this.onLine(line));
     this.proc.stderr.on('data',()=>{});
-    this.proc.on('error',e=>this.failed('Не удалось запустить Codex: '+e.message));
-    this.proc.on('exit',()=>this.failed('Codex app-server завершил работу.'));
+    this.proc.on('error',e=>this.failed(tr('Не удалось запустить Codex: ','Could not start Codex: ')+e.message));
+    this.proc.on('exit',()=>this.failed(tr('Codex app-server завершил работу.','Codex app-server exited.')));
   }
   failed(message){if(this.closed)return;this.ready=false;for(const p of this.pending.values())p.reject(Error(message));this.pending.clear();if(provider==='codex')emit('error',message);}
   send(msg){if(!this.proc.stdin.destroyed)this.proc.stdin.write(JSON.stringify(msg)+'\n');}
-  request(method,params={}){return new Promise((resolve,reject)=>{const id=this.id++;this.pending.set(id,{resolve,reject});this.send({id,method,params});setTimeout(()=>{if(this.pending.delete(id))reject(Error('Нет ответа от Codex: '+method));},30000).unref();});}
+  request(method,params={}){return new Promise((resolve,reject)=>{const id=this.id++;this.pending.set(id,{resolve,reject});this.send({id,method,params});setTimeout(()=>{if(this.pending.delete(id))reject(Error(tr('Нет ответа от Codex: ','No response from Codex: ')+method));},30000).unref();});}
   onLine(line){let m;try{m=JSON.parse(line)}catch{return;}
-    if(m.id!==undefined && !m.method){const p=this.pending.get(m.id);if(!p)return;this.pending.delete(m.id);m.error?p.reject(Error(m.error.message || 'Ошибка Codex')):p.resolve(m.result);return;}
+    if(m.id!==undefined && !m.method){const p=this.pending.get(m.id);if(!p)return;this.pending.delete(m.id);m.error?p.reject(Error(m.error.message || tr('Ошибка Codex','Codex error'))):p.resolve(m.result);return;}
     if(m.id!==undefined && m.method){this.serverRequest(m);return;}
     if(provider!=='codex')return;
     const p=m.params || {};if(p.threadId && p.threadId!==selected)return;
     if(m.method==='item/agentMessage/delta')emit('delta',p.delta||'');
     if(m.method==='item/started' && p.item?.type==='mcpToolCall')emit('event',`MCP: ${p.item.server} / ${p.item.tool}`);
-    if(m.method==='item/started' && p.item?.type==='commandExecution')emit('event','Выполняется команда');
-    if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?'Готово':`Завершено: ${turn.status||'неизвестно'}`);if(turn.error?.message)emit('error',turn.error.message);}
+    if(m.method==='item/started' && p.item?.type==='commandExecution')emit('event',tr('Выполняется команда','Running a command'));
+    if(m.method==='turn/completed'){running=null;emit('busy','0');const turn=p.turn||{};emit('status',turn.status==='completed'?tr('Готово','Ready'):`${tr('Завершено','Finished')}: ${statusText(turn.status)}`);if(turn.error?.message)emit('error',turn.error.message);}
     if(m.method==='error' && p.error?.message)emit('error',p.error.message);
   }
   serverRequest(m){
@@ -58,23 +60,23 @@ class AppServer{
     if(supported.includes(m.method)){
       const id=String(nextApproval++), details=JSON.stringify(m.params,null,2).slice(0,12000);
       approvals.set(id,yes=>this.send({id:m.id,result:{decision:yes?'accept':'decline'}}));
-      emit('approval',id,`Запрос Codex: ${m.method}\n\n${details}`);return;
+      emit('approval',id,`${tr('Запрос Codex','Codex request')}: ${m.method}\n\n${details}`);return;
     }
     if(m.method==='item/permissions/requestApproval'){
       const id=String(nextApproval++);approvals.set(id,yes=>this.send({id:m.id,result:{permissions:yes?(m.params.permissions||{}):{},scope:'turn'}}));
-      emit('approval',id,`Codex запрашивает дополнительные права:\n\n${JSON.stringify(m.params,null,2).slice(0,12000)}`);return;
+      emit('approval',id,`${tr('Codex запрашивает дополнительные права:','Codex requests additional permissions:')}\n\n${JSON.stringify(m.params,null,2).slice(0,12000)}`);return;
     }
     if(m.method==='item/tool/requestUserInput'){
       const questions=m.params?.questions||[];
-      if(!questions.length || questions.some(q=>q.isSecret) || questionRequest){this.send({id:m.id,error:{code:-32601,message:'This input request is not supported.'}});emit('error','Секретный или повторный запрос ввода пока не поддерживается.');return;}
+      if(!questions.length || questions.some(q=>q.isSecret) || questionRequest){this.send({id:m.id,error:{code:-32601,message:'This input request is not supported.'}});emit('error',tr('Секретный или повторный запрос ввода пока не поддерживается.','Secret or repeated input requests are not supported yet.'));return;}
       questionRequest={requestId:m.id,questions,index:0,answers:{}};askNext();return;
     }
     if(m.method==='mcpServer/elicitation/request'){
-      this.send({id:m.id,result:{action:'decline'}});emit('error','Форма подтверждения MCP пока не поддерживается и была отклонена.');return;
+      this.send({id:m.id,result:{action:'decline'}});emit('error',tr('Форма подтверждения MCP пока не поддерживается и была отклонена.','The MCP confirmation form is not supported and was declined.'));return;
     }
     // Unsupported interactive requests are rejected explicitly; never auto-approve.
     this.send({id:m.id,error:{code:-32601,message:'This client does not support this interactive request.'}});
-    emit('error',`Этот запрос Codex пока не поддерживается: ${m.method}`);
+    emit('error',`${tr('Этот запрос Codex пока не поддерживается','This Codex request is not supported')}: ${m.method}`);
   }
   async start(){await this.request('initialize',{clientInfo:{name:'sc2_editor_ai',title:'SC2 Editor AI',version:'0.8.0'},capabilities:{}});this.send({method:'initialized',params:{}});this.ready=true;}
   close(){this.closed=true;try{this.proc.stdin.end();this.proc.kill()}catch{}}
@@ -87,39 +89,42 @@ function askNext(){
   emit('question',q.question+(choices?'\n'+choices:''));
 }
 async function codexConnect(gen){
-  if(!codexPath)throw Error('Codex не найден. Установите приложение Codex или задайте SC2_AI_CODEX_PATH.');
+  if(!codexPath)throw Error(tr('Codex не найден. Установите приложение Codex или задайте SC2_AI_CODEX_PATH.','Codex not found. Install Codex or set SC2_AI_CODEX_PATH.'));
   if(!codex || !codex.ready){codex?.close();codex=new AppServer(codexPath);await codex.start();}
   const [account,models,mcp]=await Promise.all([codex.request('account/read',{refreshToken:false}),codex.request('model/list',{limit:100}),codex.request('mcpServerStatus/list',{limit:100})]);
   if(gen!==generation || provider!=='codex')return;
-  emit('status',account.account?'Codex подключён':'Войдите в Codex');
+  emit('status',account.account?tr('Codex подключён','Codex connected'):tr('Войдите в Codex','Sign in to Codex'));
   emit('models_begin');for(const m of models.data||[])emit('model',m.model||m.id,m.displayName||m.model||m.id,m.isDefault?'1':'0');emit('models_end');
-  const server=(mcp.data||[]).find(x=>x.name==='sc2editor');mcpStatus=server?(server.toolsError?'SC2 MCP: ошибка подключения':(Object.keys(server.tools||{}).length?'SC2 MCP подключён':'SC2 MCP настроен')):'SC2 MCP не найден в настройках Codex';showContext();
+  const server=(mcp.data||[]).find(x=>x.name==='sc2editor');mcpStatus=server?(server.toolsError?tr('SC2 MCP: ошибка подключения','SC2 MCP: connection error'):(Object.keys(server.tools||{}).length?tr('SC2 MCP подключён','SC2 MCP connected'):tr('SC2 MCP настроен','SC2 MCP configured'))):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();
   await listCodex(gen);if(gen===generation && provider==='codex')emit('ready','1');
 }
 async function listCodex(gen=generation){
   emit('threads_begin');let cursor=null,count=0;do{const r=await codex.request('thread/list',{limit:100,cursor,sortKey:'updated_at'});
     if(gen!==generation || provider!=='codex')return;
-    for(const t of r.data||[]){emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||'Без названия',t.status?.type||'');count++;}cursor=r.nextCursor;
-  }while(cursor && count<1000);emit('threads_end',cursor?'Есть дополнительные чаты':'');
+    for(const t of r.data||[]){emit('thread',t.id,t.name||t.preview?.replace(/\s+/g,' ').slice(0,90)||tr('Без названия','Untitled'),t.status?.type||'');count++;}cursor=r.nextCursor;
+  }while(cursor && count<1000);emit('threads_end',cursor?tr('Есть дополнительные чаты','More chats are available'):'');
 }
-function itemText(item){if(item.type==='userMessage')return 'Вы: '+(item.content||[]).map(c=>c.text||'').join('');
+function statusText(status){const words={completed:tr('выполнено','completed'),failed:tr('ошибка','failed'),inProgress:tr('выполняется','running'),interrupted:tr('остановлено','stopped'),declined:tr('отклонено','declined')};return words[status]||status||tr('неизвестно','unknown');}
+function unwrapUserMessage(raw){const marker='[Сообщение пользователя]\n';return raw.startsWith('[Контекст SC2 Editor]\n')&&raw.includes(marker)?raw.slice(raw.indexOf(marker)+marker.length):raw;}
+function userMessage(item){return unwrapUserMessage((item.content||[]).map(c=>c.text||'').join(''));}
+function itemText(item){if(item.type==='userMessage')return tr('Вы: ','You: ')+userMessage(item);
   if(item.type==='agentMessage')return 'AI: '+(item.text||'');
-  if(item.type==='mcpToolCall')return `[MCP: ${item.server} / ${item.tool} — ${item.status}]`;
-  if(item.type==='commandExecution')return `[Команда: ${item.command||''} — ${item.status}]`;
-  if(item.type==='fileChange')return `[Изменения файлов: ${item.status}]`;return '';}
+  if(item.type==='mcpToolCall')return `[MCP: ${item.server} / ${item.tool} — ${statusText(item.status)}]`;
+  if(item.type==='commandExecution'){const command=(item.command||'').replace(/\s+/g,' ').trim();const short=command.length>180?command.slice(0,177)+'…':command;return `[${tr('Команда','Command')} — ${statusText(item.status)}${short?': '+short:''}]`;}
+  if(item.type==='fileChange')return `[${tr('Изменения файлов','File changes')} — ${statusText(item.status)}]`;return '';}
 async function openCodex(id,gen){
   const result=await codex.request('thread/turns/list',{threadId:id,limit:100,itemsView:'full',sortDirection:'desc'});
   if(gen!==generation)return;
   const lines=[];for(const turn of [...(result.data||[])].reverse())for(const item of turn.items||[]){let text=itemText(item);if(text)lines.push(text);}
-  let history=lines.join('\r\n\r\n');if(history.length>200000)history='[Показана последняя часть истории]\r\n'+history.slice(-200000);
-  emit('history',history);if(result.nextCursor)emit('event','Показаны последние 100 сообщений диалога.');
+  let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);
+  emit('history',history);if(result.nextCursor)emit('event',tr('Показаны последние 100 сообщений диалога.','Showing the last 100 messages.'));
 }
 async function sendCodex(text){
   running={provider:'codex',turnId:null,threadId:selected,stopRequested:false};
   const turnCwd=mapContext.path?path.dirname(mapContext.path):cwd;
   if(!selected){const r=await codex.request('thread/start',{cwd:turnCwd,model:model||null,approvalPolicy:'on-request',approvalsReviewer:'user',...(process.env.SC2_AI_TEST_EPHEMERAL==='1'?{ephemeral:true,sandbox:'read-only'}:{})});selected=r.thread.id;emit('selected',selected);await listCodex();}
   else await codex.request('thread/resume',{threadId:selected,excludeTurns:true,approvalPolicy:'on-request',approvalsReviewer:'user'});
-  emit('line','Вы: '+text);emit('line','AI: ');emit('busy','1');
+  emit('line',tr('Вы: ','You: ')+text);emit('line','AI: ');emit('busy','1');
   const r=await codex.request('turn/start',{threadId:selected,cwd:turnCwd,input:[{type:'text',text:mapPrompt(text),text_elements:[]}],model:model||null});if(running?.provider==='codex'){running.turnId=r.turn.id;running.threadId=selected;if(running.stopRequested)await codex.request('turn/interrupt',{threadId:selected,turnId:r.turn.id});}
 }
 function sc2Config(){
@@ -137,43 +142,43 @@ function sc2Config(){
   }catch{}return undefined;
 }
 async function claudeConnect(gen){
-  try{claude=await import(process.env.SC2_AI_CLAUDE_MODULE?pathToFileURL(process.env.SC2_AI_CLAUDE_MODULE).href:'@anthropic-ai/claude-agent-sdk');}catch{throw Error('Claude Agent SDK не установлен. Выполните npm ci в папке bridge.');}
+  try{claude=await import(process.env.SC2_AI_CLAUDE_MODULE?pathToFileURL(process.env.SC2_AI_CLAUDE_MODULE).href:'@anthropic-ai/claude-agent-sdk');}catch{throw Error(tr('Claude Agent SDK не установлен. Выполните npm ci в папке bridge.','Claude Agent SDK is not installed. Run npm ci in the bridge folder.'));}
   let loggedIn=!!process.env.ANTHROPIC_API_KEY;
   if(!loggedIn && process.platform==='win32')try{
     const bin=path.join(path.dirname(fileURLToPath(import.meta.url)),'node_modules','@anthropic-ai','claude-agent-sdk-win32-x64','claude.exe');
     const result=JSON.parse(execFileSync(bin,['auth','status','--json'],{encoding:'utf8',windowsHide:true,timeout:12000,stdio:['ignore','pipe','ignore']}));loggedIn=!!result.loggedIn;
   }catch(e){try{loggedIn=!!JSON.parse(e.stdout||'{}').loggedIn}catch{}}
   if(gen!==generation || provider!=='claude')return;
-  emit('status',loggedIn?'Claude авторизован':'Claude: нужен вход');
-  emit('models_begin');for(const [id,name] of [['','По умолчанию'],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
-  mcpStatus=sc2Config()?'SC2 MCP настроен для Claude':'SC2 MCP не найден в настройках Codex';showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
+  emit('status',loggedIn?tr('Claude авторизован','Claude signed in'):tr('Claude: нужен вход','Claude: sign-in required'));
+  emit('models_begin');for(const [id,name] of [['',tr('По умолчанию','Default')],['sonnet','Sonnet'],['opus','Opus'],['haiku','Haiku']])emit('model',id,name,id===''?'1':'0');emit('models_end');
+  mcpStatus=sc2Config()?tr('SC2 MCP настроен для Claude','SC2 MCP configured for Claude'):tr('SC2 MCP не найден в настройках Codex','SC2 MCP not found in Codex settings');showContext();await listClaude(gen);if(gen===generation && provider==='claude')emit('ready','1');
 }
-async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||'Без названия','');}emit('threads_end');}
+async function listClaude(gen=generation){emit('threads_begin');const sessions=await claude.listSessions({limit:200});if(gen!==generation || provider!=='claude')return;for(const s of sessions){if(s.cwd)claudeDirs.set(s.sessionId,s.cwd);emit('thread',s.sessionId,s.customTitle||s.summary||s.firstPrompt||tr('Без названия','Untitled'),'');}emit('threads_end');}
 async function openClaude(id,gen){const msgs=await claude.getSessionMessages(id,{limit:200});if(gen!==generation)return;const lines=[];
-  for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');if(text)lines.push((m.type==='user'?'Вы: ':'AI: ')+text);}
-  let history=lines.join('\r\n\r\n');if(history.length>200000)history='[Показана последняя часть истории]\r\n'+history.slice(-200000);emit('history',history);}
+  for(const m of msgs){const parts=typeof m.message?.content==='string'?[{text:m.message.content}]:m.message?.content||[];const text=parts.filter(x=>x.type==='text'||typeof x.text==='string').map(x=>x.text).join('\n');if(text)lines.push((m.type==='user'?tr('Вы: ','You: '):'AI: ')+(m.type==='user'?unwrapUserMessage(text):text));}
+  let history=lines.join('\r\n\r\n');if(history.length>200000)history=tr('[Показана последняя часть истории]\r\n','[Showing the latest part of the history]\r\n')+history.slice(-200000);emit('history',history);}
 async function sendClaude(text){
-  const current=selected;aborter=new AbortController();emit('line','Вы: '+text);emit('line','AI: ');emit('busy','1');running={provider:'claude'};
+  const current=selected;aborter=new AbortController();emit('line',tr('Вы: ','You: ')+text);emit('line','AI: ');emit('busy','1');running={provider:'claude'};
   let streamed=false,failed=false;const options={cwd:(current&&claudeDirs.get(current))||(mapContext.path?path.dirname(mapContext.path):cwd),abortController:aborter,includePartialMessages:true,permissionMode:'default',settingSources:['user','project'],
     ...(current?{resume:current}:{}),...(model?{model}:{}),...(sc2Config()?{mcpServers:sc2Config()}:{}),
-    canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:'Отклонено пользователем'}));emit('approval',id,`Запрос Claude: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
+    canUseTool:async(toolName,input)=>{const id=String(nextApproval++);return await new Promise(resolve=>{approvals.set(id,yes=>resolve(yes?{behavior:'allow',updatedInput:input}:{behavior:'deny',message:tr('Отклонено пользователем','Declined by user')}));emit('approval',id,`${tr('Запрос Claude','Claude request')}: ${toolName}\n\n${JSON.stringify(input,null,2).slice(0,12000)}`);});}};
   try{for await(const message of claude.query({prompt:mapPrompt(text),options})){
     if(message.type==='system' && message.subtype==='init' && message.session_id && !selected){selected=message.session_id;emit('selected',selected);}
     if(message.type==='stream_event' && message.event?.type==='content_block_delta' && message.event.delta?.type==='text_delta'){emit('delta',message.event.delta.text);streamed=true;}
     if(message.type==='assistant' && !streamed){for(const part of message.message?.content||[])if(part.type==='text')emit('delta',part.text);}
-    if(message.type==='result' && message.is_error){failed=true;emit('error',(message.errors||[]).join('\n')||'Claude завершился с ошибкой.');}
-  }if(!failed)emit('status','Готово');await listClaude();}finally{running=null;aborter=null;emit('busy','0');}
+    if(message.type==='result' && message.is_error){failed=true;emit('error',(message.errors||[]).join('\n')||tr('Claude завершился с ошибкой.','Claude returned an error.'));}
+  }if(!failed)emit('status',tr('Готово','Ready'));await listClaude();}finally{running=null;aborter=null;emit('busy','0');}
 }
-async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status','Подключение...');emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
+async function connect(which){const gen=++generation;provider=which;selected='';model='';emit('ready','0');emit('clear');emit('threads_begin');emit('threads_end');emit('status',tr('Подключение...','Connecting...'));emit('provider',which);try{if(which==='codex')await codexConnect(gen);else await claudeConnect(gen);}catch(e){if(gen===generation)throw e;}}
 async function handle(line){const [cmd,...args]=line.split('\t');const a=args.map(un64);
-  if(cmd==='provider'){if(running)throw Error('Остановите текущий ответ перед переключением.');await connect(a[0]==='claude'?'claude':'codex');}
+  if(cmd==='provider'){if(running)throw Error(tr('Остановите текущий ответ перед переключением.','Stop the current response before switching.'));await connect(a[0]==='claude'?'claude':'codex');}
   else if(cmd==='map'){mapContext={path:a[0]||'',dirty:a[1]==='1',caption:a[2]||'',windowId:a[3]||'',processId:a[4]||'',inferred:a[5]==='1'};showContext();}
   else if(cmd==='refresh'){if(provider==='codex')await listCodex();else await listClaude();}
-  else if(cmd==='open'){if(running)throw Error('Остановите ответ перед выбором чата.');selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
-  else if(cmd==='new'){if(running)throw Error('Остановите текущий ответ.');selected='';generation++;emit('clear');emit('selected','');}
+  else if(cmd==='open'){if(running)throw Error(tr('Остановите ответ перед выбором чата.','Stop the response before selecting a chat.'));selected=a[0];let g=++generation;emit('busy','1');try{provider==='codex'?await openCodex(selected,g):await openClaude(selected,g);}finally{if(g===generation)emit('busy','0');}if(g===generation)emit('selected',selected);}
+  else if(cmd==='new'){if(running)throw Error(tr('Остановите текущий ответ.','Stop the current response first.'));selected='';generation++;emit('clear');emit('selected','');}
   else if(cmd==='model')model=a[0];
   else if(cmd==='answer' && questionRequest){const q=questionRequest.questions[questionRequest.index++];questionRequest.answers[q.id]={answers:[a[0]||'']};askNext();}
-  else if(cmd==='send'){if(running)throw Error('Дождитесь завершения ответа.');if(!a[0]?.trim())return;provider==='codex'?await sendCodex(a[0]):await sendClaude(a[0]);}
+  else if(cmd==='send'){if(running)throw Error(tr('Дождитесь завершения ответа.','Wait for the response to finish.'));if(!a[0]?.trim())return;provider==='codex'?await sendCodex(a[0]):await sendClaude(a[0]);}
   else if(cmd==='stop'){if(questionRequest){codex.send({id:questionRequest.requestId,error:{code:-32800,message:'Input cancelled by user.'}});questionRequest=null;}if(running?.provider==='codex'){if(running.turnId)await codex.request('turn/interrupt',{threadId:running.threadId,turnId:running.turnId});else running.stopRequested=true;}else aborter?.abort();}
   else if(cmd==='approve'){const f=approvals.get(a[0]);if(f){approvals.delete(a[0]);f(a[1]==='yes');}}
 }

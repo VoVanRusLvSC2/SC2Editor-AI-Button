@@ -14,7 +14,7 @@ createInterface({input:process.stdin}).on('line',line=>{
     case 'model/list':reply(m.id,{data:[{model:'test-model',displayName:'Test',isDefault:true}]});break;
     case 'mcpServerStatus/list':reply(m.id,{data:[{name:'sc2editor',tools:{one:{}}}]});break;
     case 'thread/list':reply(m.id,{data:[{id:'test-1',name:'Тест',status:{type:'idle'}}]});break;
-    case 'thread/turns/list':reply(m.id,{data:[{items:[{type:'userMessage',content:[{text:'вопрос'}]},{type:'agentMessage',text:'история'}]}]});break;
+    case 'thread/turns/list':reply(m.id,{data:[{items:[{type:'userMessage',content:[{text:'[Контекст SC2 Editor]\nINTERNAL MAP CONTEXT\n\n[Сообщение пользователя]\nвопрос'}]},{type:'agentMessage',text:'история'},{type:'commandExecution',command:'example '+ 'x'.repeat(400),status:'completed'}]}]});break;
     case 'thread/resume':reply(m.id,{thread:{id:'test-1'}});break;
     case 'thread/start':reply(m.id,{thread:{id:'test-1'}});break;
     case 'turn/start':{const expected=m.params.input[0].text.includes('другая карта')?process.env.SC2_TEST_MAP2:process.env.SC2_TEST_MAP;if(m.params.cwd!==path.dirname(expected) || !m.params.input[0].text.includes(JSON.stringify(expected)) || !m.params.input[0].text.includes('windowId="123"'))process.exit(9);reply(m.id,{turn:{id:'turn-1'}});pendingApproval=true;setTimeout(()=>{if(pendingApproval)process.stdout.write(JSON.stringify({id:901,method:'item/tool/requestUserInput',params:{threadId:'test-1',questions:[{id:'q1',question:'Выбор?',options:[]}]}})+'\n')},10);break;}

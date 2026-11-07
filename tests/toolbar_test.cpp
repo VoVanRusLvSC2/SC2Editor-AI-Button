@@ -9,7 +9,7 @@ using Detach = BOOL (WINAPI*)(HWND, UINT);
 static HWND aiWindow;
 static BOOL CALLBACK FindAI(HWND h, LPARAM) {
     wchar_t cls[128]{}; GetClassNameW(h,cls,128);
-    if (!lstrcmpW(cls,L"SC2AIButton.Window.v11") && !GetWindow(h,GW_OWNER)) aiWindow=h;
+    if (!lstrcmpW(cls,L"SC2AIButton.Window.v12") && !GetWindow(h,GW_OWNER)) aiWindow=h;
     return TRUE;
 }
 int wmain() {
@@ -20,6 +20,7 @@ int wmain() {
     HWND toolbar = CreateWindowExW(0, TOOLBARCLASSNAMEW, nullptr, WS_CHILD | TBSTYLE_FLAT,
                                    0, 0, 500, 30, parent, nullptr, nullptr, nullptr);
     if (!parent || !toolbar) return 2;
+    HMENU menu=CreateMenu();if(!menu || !AppendMenuW(menu,MF_STRING,1,L"&File") || !SetMenu(parent,menu))return 25;
     ShowWindow(parent,SW_SHOWNOACTIVATE);
     SendMessageW(toolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
     TBBUTTON existing[3]{};
@@ -39,6 +40,8 @@ int wmain() {
     SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));
     EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
     HWND aiBar=GetDlgItem(aiWindow,100);
+    wchar_t localized[80]{};GetWindowTextW(GetDlgItem(aiWindow,106),localized,80);if(lstrcmpW(localized,L"CHATS"))return 26;
+    wchar_t editClass[80]{};GetClassNameW(GetDlgItem(aiWindow,105),editClass,80);if(lstrcmpW(editClass,L"RICHEDIT50W"))return 27;
     RECT chatRect{}, transcriptRect{};GetWindowRect(GetDlgItem(aiWindow,113),&chatRect);GetWindowRect(GetDlgItem(aiWindow,105),&transcriptRect);
     if(chatRect.left>=transcriptRect.left || GetDlgItem(aiWindow,114) || GetDlgItem(aiWindow,115) || GetDlgItem(aiWindow,116))return 24;
     SendMessageW(aiWindow,WM_ACTIVATE,WA_ACTIVE,0);
@@ -59,7 +62,7 @@ int wmain() {
     if(!(SendMessageW(aiBar,TB_GETSTATE,500,0)&TBSTATE_CHECKED))return 20;
 
     SendMessageW(aiWindow,WM_COMMAND,MAKEWPARAM(109,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(aiWindow,109)));
-    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v11",nullptr);
+    HWND settings=FindWindowExW(nullptr,nullptr,L"SC2AIButton.Settings.v12",nullptr);
     if(!settings || GetWindow(settings,GW_OWNER)!=aiWindow || !GetDlgItem(settings,102) || !GetDlgItem(settings,118))return 16;
     SendMessageW(settings,WM_COMMAND,MAKEWPARAM(102,BN_CLICKED),reinterpret_cast<LPARAM>(GetDlgItem(settings,102)));
     wchar_t label[80]{}; GetWindowTextW(GetDlgItem(aiWindow,103),label,80);
@@ -76,6 +79,10 @@ int wmain() {
     if (!IsWindow(aiWindow)) return 9;
     if (!detach(toolbar, 500) || IsWindow(aiWindow) || SendMessageW(toolbar, TB_BUTTONCOUNT, 0, 0) != 3 ||
         SendMessageW(toolbar, TB_COMMANDTOINDEX, 101, 0) != 2) return 5;
+    if(!ModifyMenuW(menu,0,MF_BYPOSITION|MF_STRING,1,L"&Файл") || !attach(toolbar,1,500))return 28;
+    aiWindow=nullptr;SendMessageW(parent,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(toolbar));EnumThreadWindows(GetCurrentThreadId(),FindAI,reinterpret_cast<LPARAM>(parent));
+    GetWindowTextW(GetDlgItem(aiWindow,106),localized,80);if(lstrcmpW(localized,L"ЧАТЫ"))return 29;
+    GetWindowTextW(GetDlgItem(aiWindow,109),localized,80);if(lstrcmpW(localized,L"Настройки") || !detach(toolbar,500))return 30;
     FreeLibrary(module);
     DestroyWindow(parent);
     std::puts("PASS: AI toolbar omits separators; selection and navigation remain correct");
