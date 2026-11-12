@@ -7,8 +7,8 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai,diffWindow;
-static BOOL CALLBACK FindDiff(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Diff.v37"))diffWindow=h;return TRUE;}
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v37"))ai=h;return TRUE;}
+static BOOL CALLBACK FindDiff(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Diff.v38"))diffWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))ai=h;return TRUE;}
 struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
 static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
 static DWORD WINAPI SelectFirstOutline(void* raw){
@@ -33,6 +33,29 @@ static bool SavePreview(HWND window,const wchar_t* path){
         WriteFile(out,bits,info.bmiHeader.biSizeImage,&written,nullptr) && written==info.bmiHeader.biSizeImage;
     if(out!=INVALID_HANDLE_VALUE)CloseHandle(out);SelectObject(dc,old);DeleteObject(bitmap);DeleteDC(dc);return ok;
 }
+// Exercise full and clipped owner-draw repaints in a memory bitmap. A partially
+// invalidated button must retain the same complete native-style frame and centered glyph.
+static bool TestSendDrawing(HWND window){
+    BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=30;info.bmiHeader.biHeight=-30;
+    info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;info.bmiHeader.biSizeImage=30*30*4;
+    HDC dc=CreateCompatibleDC(nullptr);void* bits=nullptr;HBITMAP bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bits,nullptr,0);
+    if(!dc || !bitmap || !bits){if(bitmap)DeleteObject(bitmap);if(dc)DeleteDC(dc);return false;}
+    auto original=SelectObject(dc,bitmap);DRAWITEMSTRUCT item{};item.CtlType=ODT_BUTTON;item.CtlID=108;item.hwndItem=GetDlgItem(window,108);item.hDC=dc;item.rcItem={0,0,30,30};
+    auto draw=[&](){SendMessageW(window,WM_DRAWITEM,108,reinterpret_cast<LPARAM>(&item));GdiFlush();};
+    auto check=[&](){COLORREF background=GetPixel(dc,8,8);return background==GetPixel(dc,21,8) && background==GetPixel(dc,8,21) && background==GetPixel(dc,21,21) && GetPixel(dc,15,15)==RGB(0,91,145);};
+    draw();bool ok=check();
+    // Windows may repaint only part of an owner-drawn button after uncovering another window.
+    const RECT clips[]={{0,0,15,15},{15,0,30,15},{0,15,15,30},{15,15,30,30}};
+    for(const auto& r:clips){int saved=SaveDC(dc);IntersectClipRect(dc,r.left,r.top,r.right,r.bottom);draw();RestoreDC(dc,saved);if(!check())ok=false;}
+    wchar_t path[32768]{};DWORD pathLength=GetEnvironmentVariableW(L"SC2_SEND_PREVIEW",path,32768);
+    if(pathLength && pathLength<32768){
+        BITMAPFILEHEADER header{};header.bfType=0x4d42;header.bfOffBits=sizeof(header)+sizeof(info.bmiHeader);header.bfSize=header.bfOffBits+info.bmiHeader.biSizeImage;
+        HANDLE out=CreateFileW(path,GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);DWORD written=0;
+        if(out!=INVALID_HANDLE_VALUE){WriteFile(out,&header,sizeof(header),&written,nullptr);WriteFile(out,&info.bmiHeader,sizeof(info.bmiHeader),&written,nullptr);WriteFile(out,bits,info.bmiHeader.biSizeImage,&written,nullptr);CloseHandle(out);}
+    }
+    item.itemState=ODS_DISABLED;draw();if(GetPixel(dc,15,15)!=GetSysColor(COLOR_GRAYTEXT))ok=false;
+    SelectObject(dc,original);DeleteObject(bitmap);DeleteDC(dc);return ok;
+}
 int wmain(){
     wchar_t name[80]{};swprintf_s(name,L"SC2AIMultiTest-%lu",GetCurrentProcessId());
     HWINSTA station=CreateWindowStationW(name,0,WINSTA_ALL_ACCESS,nullptr);if(!station||!SetProcessWindowStation(station))return 1;
@@ -45,6 +68,7 @@ int wmain(){
     HMODULE dll=LoadLibraryW(L"SC2AIButton.dll");if(!dll)return 6;auto attach=reinterpret_cast<Attach>(GetProcAddress(dll,"SC2AI_Attach"));if(!attach||!attach(bar,1,500))return 7;
     SendMessageW(owner,WM_COMMAND,MAKEWPARAM(500,0),reinterpret_cast<LPARAM>(bar));EnumThreadWindows(GetCurrentThreadId(),Find,0);if(!ai)return 8;
     auto event=[&](const char* kind,std::vector<std::wstring> fields={}){auto e=new BridgeEvent{nullptr,kind,fields};SendMessageW(ai,WM_AI_BRIDGE,0,reinterpret_cast<LPARAM>(e));};
+    if(!TestSendDrawing(ai)){std::puts("send button repaint failed");return 49;}
     HWND edit=GetDlgItem(ai,105);
     HWND composer=GetDlgItem(ai,107),changes=GetDlgItem(ai,124),placeholder=GetDlgItem(ai,125);RECT smallRect{},largeRect{},shrunkRect{};
     if(!placeholder || !(GetWindowLongPtrW(placeholder,GWL_STYLE)&WS_VISIBLE))return 46;
@@ -109,6 +133,14 @@ int wmain(){
     RECT input{},model{},attachRect{},sendRect{};GetWindowRect(GetDlgItem(ai,107),&input);GetWindowRect(GetDlgItem(ai,110),&model);
     GetWindowRect(GetDlgItem(ai,119),&attachRect);GetWindowRect(GetDlgItem(ai,108),&sendRect);
     if(attachRect.left!=input.left || model.top<input.bottom || attachRect.right>model.left || model.right>sendRect.left || sendRect.right>input.right)return 15;
+    int centerDifference=(model.top+model.bottom)-(sendRect.top+sendRect.bottom);
+    if(centerDifference<-2 || centerDifference>2){std::printf("model and send centers differ: %d\n",centerDifference);return 50;}
+    for(int width:{900,1200,1920}){
+        SetWindowPos(ai,nullptr,0,0,width,700,SWP_NOZORDER|SWP_NOACTIVATE);
+        GetWindowRect(GetDlgItem(ai,110),&model);GetWindowRect(GetDlgItem(ai,108),&sendRect);GetWindowRect(GetDlgItem(ai,107),&input);
+        int difference=(model.top+model.bottom)-(sendRect.top+sendRect.bottom);
+        if(difference<-2 || difference>2 || model.right>sendRect.left || sendRect.right>input.right)return 51;
+    }
     for(int id:{108,109,119,120,121,122})if((GetWindowLongPtrW(GetDlgItem(ai,id),GWL_STYLE)&BS_TYPEMASK)!=BS_OWNERDRAW)return 26;
     event("clear");event("line",{L"AI: "});event("delta",{L"before drag"});SendMessageW(ai,WM_TIMER,2,0);
     SendMessageW(edit,WM_VSCROLL,MAKEWPARAM(SB_THUMBTRACK,0),0);

@@ -13,7 +13,7 @@ static LRESULT CALLBACK OwnerProc(HWND h,UINT msg,WPARAM w,LPARAM l){
     if(msg==WM_COMMAND && reinterpret_cast<HWND>(l)==sourceToolbar && LOWORD(w)!=500){forwarded=LOWORD(w);return 0;}
     return DefWindowProcW(h,msg,w,l);
 }
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v37"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))ai=h;return TRUE;}
 int wmain(){
     if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 1;
