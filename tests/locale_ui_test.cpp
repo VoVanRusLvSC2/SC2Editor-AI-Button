@@ -9,7 +9,7 @@
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND ai;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))ai=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v39"))ai=h;return TRUE;}
 int wmain(){
     if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(EditorLocaleFromVariables("\xEF\xBB\xBFlocaleiddata=zhTW\r\n")!=L"zhTW" ||

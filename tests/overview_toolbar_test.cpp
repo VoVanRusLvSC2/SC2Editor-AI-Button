@@ -6,7 +6,7 @@
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 using Detach=BOOL (WINAPI*)(HWND,UINT);
 static HWND oldWindow,newWindow;
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))newWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v23"))oldWindow=h;if(!lstrcmpW(cls,L"SC2AIButton.Window.v39"))newWindow=h;return TRUE;}
 int wmain(int argc,wchar_t**argv){
     if(!UsePrivateTestDesktop()){std::fprintf(stderr,"Could not isolate the test desktop.\n");return 90;}
     if(argc!=2)return 1;INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};if(!InitCommonControlsEx(&common))return 2;

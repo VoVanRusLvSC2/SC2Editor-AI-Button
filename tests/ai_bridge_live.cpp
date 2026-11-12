@@ -7,7 +7,7 @@
 static DWORD pid;static HWND editor,bar,ai;
 static BOOL CALLBACK Find(HWND h,LPARAM){DWORD p=0;GetWindowThreadProcessId(h,&p);if(p!=pid)return TRUE;
  wchar_t cls[128]{},title[1024]{};GetClassNameW(h,cls,128);GetWindowTextW(h,title,1024);
- if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))ai=h;
+ if(!lstrcmpW(cls,L"SC2AIButton.Window.v39"))ai=h;
  if(!lstrcmpW(cls,L"#32770")&&!wcsncmp(title,L"Terrain - ",10)){HWND candidate=GetDlgItem(h,10);if(candidate&&SendMessageW(candidate,TB_COMMANDTOINDEX,60000,0)>=0){editor=h;bar=candidate;}}
  return TRUE;}
 int wmain(int argc,wchar_t**argv){if(argc!=3 && argc!=4)return 1;pid=wcstoul(argv[2],nullptr,10);

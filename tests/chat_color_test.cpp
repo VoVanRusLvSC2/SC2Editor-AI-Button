@@ -7,8 +7,15 @@
 #include "../src/bridge_client.h"
 using Attach=BOOL (WINAPI*)(HWND,int,UINT);
 static HWND ai,diffWindow;
-static BOOL CALLBACK FindDiff(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Diff.v38"))diffWindow=h;return TRUE;}
-static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v38"))ai=h;return TRUE;}
+static BOOL CALLBACK FindDiff(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Diff.v39"))diffWindow=h;return TRUE;}
+static BOOL CALLBACK Find(HWND h,LPARAM){wchar_t cls[128]{};GetClassNameW(h,cls,128);if(!lstrcmpW(cls,L"SC2AIButton.Window.v39"))ai=h;return TRUE;}
+struct TranscriptProbe { int replaceAll=0;int rectChanges=0; };
+static LRESULT CALLBACK CountTranscriptChanges(HWND h,UINT msg,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR raw){
+    auto probe=reinterpret_cast<TranscriptProbe*>(raw);
+    if(msg==WM_SETTEXT)++probe->replaceAll;
+    if(msg==EM_SETRECT)++probe->rectChanges;
+    return DefSubclassProc(h,msg,w,l);
+}
 struct PopupProbe { DWORD uiThread;HDESK desktop;bool found,labels; };
 static BOOL CALLBACK FindMenu(HWND h,LPARAM raw){wchar_t cls[80]{};GetClassNameW(h,cls,80);if(!lstrcmpW(cls,L"#32768")){*reinterpret_cast<HWND*>(raw)=h;return FALSE;}return TRUE;}
 static DWORD WINAPI SelectFirstOutline(void* raw){
@@ -169,6 +176,41 @@ int wmain(){
     SetFocus(edit);RECT wheelRect{};GetWindowRect(edit,&wheelRect);
     SendMessageW(edit,WM_MOUSEWHEEL,MAKEWPARAM(0,WHEEL_DELTA),MAKELPARAM(wheelRect.left+20,wheelRect.top+20));SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&wheelAfter));
     UINT wheelLines=0;if(SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&wheelLines,0) && wheelLines && wheelBefore.y>0 && wheelAfter.y>=wheelBefore.y){SendMessageW(edit,WM_VSCROLL,SB_LINEUP,0);POINT line{};SendMessageW(edit,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&line));std::printf("wheel scroll: before=%ld after=%ld line=%ld lines=%u\n",wheelBefore.y,wheelAfter.y,line.y,wheelLines);return 35;}
+    // Typing a one-line prompt must not reformat the conversation control.
+    TranscriptProbe transcriptProbe{};
+    if(!SetWindowSubclass(edit,CountTranscriptChanges,77,reinterpret_cast<DWORD_PTR>(&transcriptProbe)))return 52;
+    SetWindowTextW(composer,L"test");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));
+    if(transcriptProbe.rectChanges){std::printf("typing reformatted chat: %d\n",transcriptProbe.rectChanges);return 53;}
+    SetWindowTextW(composer,L"");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));
+    CHARRANGE beginning{0,4};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&beginning));
+    SendMessageW(edit,WM_VSCROLL,SB_TOP,0);SendMessageW(edit,EM_LINESCROLL,0,35);
+    LRESULT firstLine=SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0);
+    event("line",{L"You: a new question"});event("line",{L"AI: "});event("delta",{L"A new answer"});
+    event("event",{L"MCP: first operation"});event("event",{L"MCP: second operation"});SendMessageW(ai,WM_TIMER,2,0);
+    CHARRANGE kept{};SendMessageW(edit,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&kept));
+    LRESULT afterLine=SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0);
+    if(transcriptProbe.replaceAll || firstLine!=afterLine || kept.cpMin!=beginning.cpMin || kept.cpMax!=beginning.cpMax){
+        std::printf("chat reset: replacements=%d first=%lld after=%lld selection=%ld,%ld\n",transcriptProbe.replaceAll,(long long)firstLine,(long long)afterLine,kept.cpMin,kept.cpMax);return 54;
+    }
+    FINDTEXTEXW newActions{};newActions.chrg.cpMin=0;newActions.chrg.cpMax=-1;newActions.lpstrText=const_cast<wchar_t*>(L"Actions (2)");
+    if(SendMessageW(edit,EM_FINDTEXTEXW,FR_DOWN,reinterpret_cast<LPARAM>(&newActions))<0)return 55;
+    SetWindowTextW(composer,L"one\r\ntwo\r\nthree\r\nfour");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));
+    if(SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0)!=firstLine){std::puts("resizing prompt moved conversation");return 57;}
+    SetWindowTextW(composer,L"");SendMessageW(ai,WM_COMMAND,MAKEWPARAM(107,EN_CHANGE),reinterpret_cast<LPARAM>(composer));
+    if(SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0)!=firstLine){std::puts("shrinking prompt moved conversation");return 58;}
+    CHARRANGE newEnd{-1,-1};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&newEnd));SendMessageW(edit,EM_SCROLLCARET,0,0);
+    event("line",{L"AI: "});event("delta",{L"A follow-up reply"});SendMessageW(ai,WM_TIMER,2,0);
+    SCROLLINFO bottomInfo{sizeof(bottomInfo),SIF_ALL};GetScrollInfo(edit,SB_VERT,&bottomInfo);
+    if(bottomInfo.nPos+static_cast<int>(bottomInfo.nPage)<bottomInfo.nMax-3 || transcriptProbe.replaceAll){std::puts("new answer did not stay at the bottom");return 56;}
+    // Rich Edit exposes only 16-bit pixel scroll coordinates; use line positions for long chats.
+    std::wstring veryLong=L"AI: ";for(int i=0;i<5000;++i)veryLong+=L"A longer history line.\r\n";
+    event("history",{veryLong});transcriptProbe.replaceAll=0;
+    CHARRANGE longSelection{0,3};SendMessageW(edit,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&longSelection));
+    SendMessageW(edit,WM_VSCROLL,SB_TOP,0);SendMessageW(edit,EM_LINESCROLL,0,4000);
+    LRESULT deepLine=SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0);
+    event("line",{L"You: test deep scroll"});event("line",{L"AI: "});event("delta",{L"new content"});SendMessageW(ai,WM_TIMER,2,0);
+    if(deepLine<3000 || SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0)!=deepLine || transcriptProbe.replaceAll){std::puts("long history scroll was not preserved");return 59;}
+    RemoveWindowSubclass(edit,CountTranscriptChanges,77);
     wchar_t previewPath[32768]{};DWORD previewLength=GetEnvironmentVariableW(L"SC2_CHAT_PREVIEW",previewPath,32768);
     if(previewLength && previewLength<32768){
         event("status",{L"Codex connected"});event("mcp",{L"SC2 MCP connected · map: Example.SC2Map"});
