@@ -50,5 +50,8 @@ test('unknown document identity stays unresolved and the user message is retaine
   assert.ok(result.includes('The exact open-map path is unresolved'));
   assert.ok(result.includes('"Terrain - [Untitled]"'));
   assert.ok(result.endsWith('[Сообщение пользователя]\nshow status'));
-  assert.ok(result.includes('not live Terrain, triggers or object creation'));
+  assert.ok(result.includes('live.trigger.create'));
+  assert.ok(result.includes('actual live.capabilities and tool schemas'));
+  assert.ok(result.includes('Do not ask the user to close this AI panel'));
+  assert.ok(!result.includes('not live Terrain, triggers or object creation'));
 });

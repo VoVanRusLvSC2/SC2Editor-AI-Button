@@ -31,7 +31,7 @@ Attach up to five images to a message by pasting into the input with Ctrl+V or s
 
 If another Codex process holds a chat for writing, continue that chat in the other client or start a new one in the Editor. When a send is rejected, the draft text and images stay in the composer.
 
-Chats are grouped by Codex desktop projects, reflect their configured folder colors, and can be collapsed; Claude chats are grouped by working folder. Codex can edit files directly in the open map’s working directory; other locations and actions may require approval. The SC2 MCP live backend still works through saved checkpoints and cannot directly mutate the open Editor document in memory.
+Chats are grouped by Codex desktop projects, reflect their configured folder colors, and can be collapsed; Claude chats are grouped by working folder. Codex can edit files directly in the open map’s working directory; other locations and actions may require approval. Current-document authoring uses the configured MCP live providers. Discover their actual capabilities: the toolbar connection alone does not establish that every component can be edited in memory. Checkpoint copies are a separately selected workflow.
 
 The composer uses a larger, DPI-aware Segoe UI font. For a textured folder icon, an optional 16×16 PNG can be placed at `%LOCALAPPDATA%\SC2Editor-AI-Button\assets\folder.png` (or its path supplied via `SC2_AI_FOLDER_ICON_PATH` before starting the Editor). For example, SC2 MCP's `assets.preview` can export the locally installed `ui-editoricon-triggercategories_folder.dds` texture to PNG. The project does not distribute Blizzard's texture; without the local file it uses its own folder drawing. The icon is tinted to each project's configured color.
 
@@ -49,9 +49,11 @@ The author is [VoVanRusLvSC2](https://github.com/VoVanRusLvSC2). You may use, co
 Map prompts default to the currently open document, followed by a requested
 native same-file save and an actual change summary. Checkpoint/Save As copies
 require explicit user selection; unsupported live operations must not silently
-fall back to another map. Current MCP live editing supports existing Unit numeric
-fields and native document Save. Direct placement/Terrain/trigger editing is not
-implemented by this policy.
+fall back to another map. Actual connected MCP capabilities determine which current-document providers
+are available. In supported versions, new self-contained GUI libraries use
+`live.trigger.create` or `live.trigger.income` with inline plans while the AI
+panel remains open. The panel does not require an intermediate plan file, a
+workspace change or a checkpoint copy for those operations.
 
 Before a Codex turn, the bridge fingerprints the configured local server entry
 and live module files. A changed fingerprint queues MCP configuration refresh on
