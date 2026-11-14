@@ -39,7 +39,7 @@ New chats created here are listed under **IN_EDITOR** by default. Use **All** to
 
 The assistant receives the open map path and Editor window identity with each message. Abbreviated titles are matched against recent Editor documents and marked as inferred; ambiguous paths are left unresolved. The configured `sc2editor` MCP server is also passed to Claude. Connectivity tests use read-only `live.windows` and capabilities; they do not require saving or `live.connect`. Updated MCP servers provide separate `live.memory.read/set` tools for direct edits of existing map-local Unit numeric fields, including unsaved values. The matching Data window must be selected; live Terrain, triggers and object creation are outside that backend. Only the separately selected `live.connect` checkpoint workflow requires a saved file and works through a private copy. If the memory tools are absent, reconnect the updated MCP frontend; saving does not load new tools. Restart this panel's bridge after a prompt update to load its new routing instructions. The map name shown in the UI does not by itself confirm an MCP connection. Approval requests are presented; some complex MCP elicitation forms are not yet supported and are declined. Long histories are truncated for display.
 
-See [the implementation notes](docs/chat-integration-plan.ru.md). The Editor version, UI layouts, and scaling settings are not exhaustively tested.
+See [the source code guide](docs/source-code-guide.md) and [the implementation notes](docs/chat-integration-plan.ru.md). The Editor version, UI layouts, and scaling settings are not exhaustively tested.
 
 ## Author and use
 
